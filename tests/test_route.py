@@ -1,0 +1,193 @@
+"""Tests for CraftmansHelper/Route.lua against stubbed WoW APIs, in Lua 5.1 (via lupa).
+
+    pip install lupa
+    python tests/test_route.py
+"""
+import sys
+from pathlib import Path
+
+from lupa.lua51 import LuaRuntime
+
+ADDON = Path(__file__).resolve().parent.parent / "CraftmansHelper"
+
+STUBS = r"""
+ns = { STATUS = { READY = "ready", ACTIVE = "active", INBAGS = "inbags", AVAILABLE = "available", DONE = "done" },
+       MSG_UPDATED = "UPDATED", UNKNOWN_CONTINENT = 0, CONTINENT_ORDER = { 1414, 1415, 0 } }
+printed, sent = {}, {}
+
+-- Zones: map -> continent (1440 Ashenvale/1441 Thousand Needles = Kalimdor; 1437 Wetlands/1431 Duskwood = EK)
+local CONT = { [1440] = 1414, [1441] = 1414, [1437] = 1415, [1431] = 1415 }
+function ns.ResolveZone(map) return map, "Zone" .. map, CONT[map] or 0 end
+function ns.ContinentName(c) return "C" .. c end
+function tContains(t, v) for _, x in ipairs(t) do if x == v then return true end end return false end
+
+-- Fake world: each map is a 1000-yard square; Kalimdor maps on instance 1, EK on 0.
+function CreateVector2D(x, y) return { x = x, y = y } end
+C_Map = {}
+function C_Map.GetWorldPosFromMapPos(map, v)
+    local inst = (CONT[map] == 1414) and 1 or 0
+    return inst, { GetXY = function() return map * 1000 + v.x * 1000, v.y * 1000 end }
+end
+player = { map = 1437, x = 0.5, y = 0.5 }
+function C_Map.GetBestMapForUnit() return player.map end
+function C_Map.GetPlayerMapPosition() return { GetXY = function() return player.x, player.y end } end
+faction = "Alliance"
+function UnitFactionGroup() return faction end
+
+-- Addon object / modules
+CH = { Print = function(self, msg) table.insert(printed, msg) end }
+function CH:NewModule(name)
+    local m = { name = name }
+    function m:SendMessage(msg) table.insert(sent, msg) end
+    function m:RegisterMessage() end
+    return m
+end
+ns.CH = CH
+
+-- Nav stub: records waypoints and the arrow target.
+nav = { added = 0, removed = 0, arrow = nil, tomtom = true }
+CH.Nav = {
+    HasTomTom = function() return nav.tomtom end,
+    Add = function(self, group, point, arrow)
+        if not nav.tomtom and not arrow then return nil end
+        nav.added = nav.added + 1
+        local h = { point = point }
+        if arrow then nav.arrow = h end
+        return h
+    end,
+    Arrow = function(self, h) nav.arrow = h end,
+    Remove = function(self, group, h) if h then nav.removed = nav.removed + 1 end end,
+    Clear = function(self, group) end,
+}
+
+-- Tracker stub
+states = {}
+CH.Tracker = {
+    GetAllStates = function() return states end,
+    GetState = function(self, id) return states[id] end,
+}
+function writ(id, status, map, x, y, name, fac, have)
+    local turnIn = map and { map = map, x = x, y = y, name = name, faction = fac } or nil
+    states[id] = { id = id, status = status, have = have or 1, need = 1, turnIn = turnIn,
+                   zoneName = map and ("Zone" .. map) or "Unknown",
+                   continentID = map and ns.ResolveZone(map) and select(3, ns.ResolveZone(map)) or 0,
+                   writ = { name = "W" .. id, item = id } }
+end
+"""
+
+lua = LuaRuntime(unpack_returned_tuples=True)
+lua.execute(STUBS)
+g = lua.globals()
+lua.execute("function _load(src, name) local f = assert(loadstring(src, name)); f('CraftmansHelper', ns) end")
+for f in ("Solver.lua", "Route.lua"):
+    g._load((ADDON / f).read_text(encoding="utf-8"), f)
+Route = g.CH.Route
+same = lua.eval("rawequal")  # lupa wrappers don't compare Lua tables by identity
+
+failures = 0
+
+
+def check(name, cond, detail=""):
+    global failures
+    print(("ok   " if cond else "FAIL ") + name + ("" if cond else f"  {detail}"))
+    failures += 0 if cond else 1
+
+
+def reset():
+    lua.execute("states = {}; printed = {}; sent = {}; nav.added, nav.removed, nav.arrow = 0, 0, nil")
+
+
+def stop_names(route):
+    return [route.stops[i].name for i in range(1, len(route.stops) + 1)]
+
+
+# --- Grouping, filtering, ordering ------------------------------------------
+reset()
+lua.execute("""
+writ(1, "ready",   1437, 50.2, 37.7, "Kixxle", "AH")      -- Wetlands
+writ(2, "ready",   1437, 50.2, 37.7, "Kixxle", "AH")      -- same spot -> same stop
+writ(3, "inbags",  1431, 81.8, 19.8, "Kzixx", "AH", 1)    -- in bags with item -> included
+writ(4, "inbags",  1431, 81.8, 19.8, "Kzixx", "AH", 0)    -- in bags without item -> excluded
+writ(5, "active",  1431, 10, 10, "Missing", "AH", 0)      -- still missing the item -> excluded
+writ(6, "ready",   1440, 60.2, 72.7, "Ash'alari", "AH")   -- Kalimdor
+writ(7, "ready",   1441, 77.2, 77.4, "Rizzle", "H")       -- Horde-only NPC -> excluded for Alliance
+writ(8, "ready",   nil)                                   -- no location -> unroutable
+writ(9, "done",    1440, 60, 60, "Done", "AH")            -- done today -> excluded
+""")
+route = Route.Build(Route)
+names = stop_names(route)
+check("stops are grouped by spot", names.count("Kixxle") == 1 and len(route.stops[1].writs) == 2, names)
+check("unstarted writ with item included", "Kzixx" in names, names)
+check("writs missing items / done are excluded", "Missing" not in names and "Done" not in names, names)
+check("faction filter", len(route.excluded) == 1 and route.excluded[1].id == 7)
+check("unroutable listed", len(route.unroutable) == 1 and route.unroutable[1].id == 8)
+check("player's continent (EK) first", route.legs[1].contID == 1415 and route.legs[2].contID == 1414,
+      [route.legs[i].contID for i in range(1, len(route.legs) + 1)])
+check("EK leg starts from player", route.legs[1].fromPlayer and not route.legs[2].fromPlayer)
+check("flat stop list = 3 stops", len(route.stops) == 3, names)
+
+# Horde player sees the Horde-only NPC.
+lua.execute('faction = "Horde"')
+route = Route.Build(Route)
+check("Horde player gets Horde NPC", "Rizzle" in stop_names(route) and len(route.excluded) == 0)
+lua.execute('faction = "Alliance"')
+
+# Player in Kalimdor -> Kalimdor first.
+lua.execute("player.map = 1440")
+route = Route.Build(Route)
+check("Kalimdor first when standing there", route.legs[1].contID == 1414)
+lua.execute("player.map = 1437")
+
+# --- Following the route -------------------------------------------------------
+route = Route.Plan(Route)
+first = Route.GetCurrent(Route)
+check("plan sets the first stop as current", first is not None and first.index == 1)
+check("waypoint added per stop (TomTom)", g.nav.added == 3, g.nav.added)
+check("arrow points at the first stop", same(g.nav.arrow, first.handle))
+
+# Deliver everything at the first stop.
+for wid in list(first.writs.values()):
+    lua.eval(f"function() states[{wid}].status = 'done' end")()
+Route.OnWritsUpdated(Route)
+second = Route.GetCurrent(Route)
+check("advances after delivery", first.done and second.index == 2, (first.done, second and second.index))
+check("delivered stop's waypoint removed", g.nav.removed == 1)
+check("arrow moved to the next stop", same(g.nav.arrow, second.handle))
+
+# A partial delivery at a multi-writ stop doesn't advance.
+lua.execute("""
+states = {}
+writ(1, "ready", 1437, 50, 50, "A", "AH"); writ(2, "ready", 1437, 50, 50, "A", "AH")
+writ(3, "ready", 1437, 90, 90, "B", "AH")
+player.x, player.y = 0.5, 0.5
+""")
+Route.Plan(Route)
+cur = Route.GetCurrent(Route)
+lua.execute("states[1].status = 'done'")
+Route.OnWritsUpdated(Route)
+check("partial delivery keeps the stop", same(Route.GetCurrent(Route), cur) and not cur.done)
+lua.execute("states[2].status = 'done'; states[3].status = 'done'")
+Route.OnWritsUpdated(Route)
+check("route completes and clears", not Route.IsActive(Route) and any("complete" in str(p) for p in g.printed.values()))
+
+# Without TomTom only the current stop gets a pin.
+lua.execute("""
+nav.tomtom = false; nav.added = 0; states = {}
+writ(1, "ready", 1437, 10, 10, "A", "AH"); writ(2, "ready", 1437, 90, 90, "B", "AH")
+""")
+Route.Plan(Route)
+check("map pin fallback: one pin", g.nav.added == 1, g.nav.added)
+lua.execute("states[%d].status = 'done'" % Route.GetCurrent(Route).writs[1])
+Route.OnWritsUpdated(Route)
+check("map pin fallback: pin moves on", g.nav.added == 2 and same(g.nav.arrow, Route.GetCurrent(Route).handle))
+
+# Nothing to deliver.
+lua.execute("nav.tomtom = true; states = {}")
+route = Route.Plan(Route)
+check("empty route handled", len(route.stops) == 0 and not Route.IsActive(Route))
+
+print()
+if failures:
+    print(f"{failures} test(s) failed")
+    sys.exit(1)
+print("all tests passed")

@@ -55,6 +55,8 @@ end
 local HELP = {
     "/writs - toggle the window",
     "/writs all - open the All Writs tab",
+    "/writs route - plan a delivery route and start the waypoints",
+    "/writs clear - clear the route and any waypoints set by this addon",
     "/writs status - print a summary in chat",
     "/writs learned - list turn-in locations recorded in-game",
 }
@@ -65,6 +67,13 @@ function CH:SlashCommand(input)
         self.UI:Toggle()
     elseif cmd == "all" then
         self.UI:Show("all")
+    elseif cmd == "route" then
+        self.Route:Plan()
+        self.UI:Show("route")
+    elseif cmd == "clear" then
+        self.Route:Clear()
+        self.Nav:Clear("manual")
+        self:Print("Waypoints cleared.")
     elseif cmd == "status" then
         self:PrintStatus()
     elseif cmd == "learned" then

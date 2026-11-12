@@ -3,7 +3,14 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.0.0)
+## Features (v1.1.0)
+
+- **Route** tab: plans a delivery route over every writ you can hand in right now.
+  - Writs delivered to the same NPC become one stop, and each continent is ordered separately, starting with the
+    one you're on.
+  - Navigation uses TomTom waypoints, or the game's map pin as a fallback, and moves to the next stop after each
+    delivery.
+- Click a writ, or a zone heading, to set waypoints to its turn-ins.
 
 - **My Writs** tab: the writs in your quest log (and, optionally, unstarted writs in your bags), grouped by
   continent (Kalimdor, then Eastern Kingdoms) and then by zone, sorted A–Z. Each row shows whether it is ready to
@@ -13,7 +20,8 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - Records the turn-in NPC and position every time you deliver a writ (`/writs learned`). This fills in the
   Expert/Artisan locations that aren't documented yet.
 
-Commands: `/writs` (toggle window), `/writs all`, `/writs status`, `/writs learned`.
+Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs all`, `/writs status`,
+`/writs learned`.
 
 ## Install (development)
 
@@ -34,7 +42,11 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
+| `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |
+| `CraftmansHelper/Solver.lua` | Route ordering (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
+| `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, splits by continent, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
+| `tests/` | Lua 5.1 tests for the solver and route logic: `pip install lupa`, then `python tests/test_solver.py` and `python tests/test_route.py` |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
 | `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
 
@@ -60,10 +72,8 @@ writs). Nothing is known yet for the Artisan writs.
 
 ## Roadmap
 
-- **Phase 2:** TomTom waypoints (click a row or zone), with the built-in map pin as a fallback when TomTom isn't
-  installed.
-- **Phase 3:** route planner, per continent, over unique turn-in stops. Version 1 uses straight-line distance;
-  version 2 adds flight paths, boats/zeppelins and hearthstone.
+- ~~Phase 2: TomTom waypoints~~ and ~~Phase 3: route planner (straight-line)~~ shipped in 1.1.0.
+- **Next:** smarter routes that account for flight paths, boats/zeppelins and hearthstone.
 - **Phase 4:** complete the Expert/Artisan data (runtime lookup in QuestieDB when it's installed, plus importing
   locations learned in-game).
 - **Phase 5:** item tooltips (writ status, and "needed for writ X" on crafted items), shopping list, minimap

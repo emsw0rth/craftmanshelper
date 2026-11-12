@@ -107,12 +107,7 @@ end
 ---------------------------------------------------------------------------
 
 local function CountItem(w)
-    local n = GetItemCount(w.item) or 0
-    if w.extraItems then
-        -- Unverified alternates listed on the quest page; count them too.
-        for _, id in ipairs(w.extraItems) do n = n + (GetItemCount(id) or 0) end
-    end
-    return n
+    return GetItemCount(w.item) or 0
 end
 
 local function IsReady(questID, have, need, writsInBags)

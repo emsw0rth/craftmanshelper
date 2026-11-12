@@ -72,8 +72,34 @@ local function ShowTooltip(widget, s)
         GameTooltip:AddDoubleLine("Writs in bank", tostring(s.writsTotal - s.writsInBags), 1, 0.82, 0, 1, 1, 1)
     end
     GameTooltip:AddLine(" ")
+    if t and t.x then
+        GameTooltip:AddLine("Click to set a waypoint to the turn-in.", 0.6, 0.6, 0.6)
+    end
     GameTooltip:AddLine("Shift-click to link the required item.", 0.6, 0.6, 0.6)
     GameTooltip:Show()
+end
+
+local function PointFor(s)
+    local t = s.turnIn
+    if not (t and t.map and t.x and t.y) then return nil end
+    local who = t.name or s.zoneName or "Turn-in"
+    return { map = t.map, x = t.x, y = t.y, title = who .. ": " .. ItemName(s.writ.item, s.writ.name) }
+end
+
+-- Waypoints to the turn-ins of the given writ states (one per distinct spot).
+local function NavigateTo(list)
+    local points, seen = {}, {}
+    for _, s in ipairs(list) do
+        local p = PointFor(s)
+        if p then
+            local key = string.format("%d:%.0f:%.0f", p.map, p.x, p.y)
+            if not seen[key] then
+                seen[key] = true
+                table.insert(points, p)
+            end
+        end
+    end
+    CH.Nav:GoTo(points)
 end
 
 local function AddRow(parent, s, extra)
@@ -93,8 +119,9 @@ local function AddRow(parent, s, extra)
         if IsModifiedClick("CHATLINK") then
             local _, link = C_Item.GetItemInfo(s.writ.item)
             if link then InsertLink(link) end
+        else
+            NavigateTo({ s })
         end
-        -- Phase 2: left-click will set a TomTom waypoint to the turn-in.
     end)
     parent:AddChild(row)
 end
@@ -113,6 +140,40 @@ local function AddLabel(parent, text, font)
     l:SetText(text)
     parent:AddChild(l)
     return l
+end
+
+-- Zone heading in "My Writs": click for waypoints to every writ listed under it.
+local function AddZoneHeader(parent, zoneName, list)
+    local l = AceGUI:Create("InteractiveLabel")
+    l:SetFullWidth(true)
+    l:SetFontObject(GameFontNormalLarge)
+    l:SetText(zoneName)
+    l:SetCallback("OnEnter", function(widget)
+        GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(zoneName)
+        GameTooltip:AddLine("Click to set waypoints to every writ in this zone.", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    l:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+    l:SetCallback("OnClick", function() NavigateTo(list) end)
+    parent:AddChild(l)
+end
+
+local function AddButton(parent, text, width, onClick)
+    local b = AceGUI:Create("Button")
+    b:SetText(text)
+    b:SetWidth(width)
+    b:SetCallback("OnClick", onClick)
+    parent:AddChild(b)
+    return b
+end
+
+local function FormatYards(yards)
+    yards = math.floor((yards or 0) + 0.5)
+    if yards >= 1000 then
+        return string.format("%d,%03d yd", math.floor(yards / 1000), yards % 1000)
+    end
+    return yards .. " yd"
 end
 
 local function CreateScroll(container, key)
@@ -175,8 +236,8 @@ function UI:BuildMine(container)
             for zoneName in pairs(cont) do table.insert(zones, zoneName) end
             table.sort(zones, SortName)
             for _, zoneName in ipairs(zones) do
-                AddLabel(scroll, zoneName, GameFontNormalLarge)
                 local list = cont[zoneName]
+                AddZoneHeader(scroll, zoneName, list)
                 table.sort(list, function(a, b)
                     if a.status ~= b.status then return STATUS_ORDER[a.status] < STATUS_ORDER[b.status] end
                     return SortName(a.writ.name, b.writ.name)
@@ -263,6 +324,109 @@ function UI:BuildAll(container)
 end
 
 ---------------------------------------------------------------------------
+-- Tab: Route
+---------------------------------------------------------------------------
+
+local function AddWritLines(parent, writs)
+    for _, id in ipairs(writs) do
+        local s = CH.Tracker:GetState(id)
+        local text = "      " .. ItemName(s.writ.item, s.writ.name)
+        if s.status == STATUS.INBAGS then
+            text = text .. "  " .. C(COLOR.inbags, "(start the writ first)")
+        elseif s.status == STATUS.DONE then
+            text = text .. "  " .. C(COLOR.done, "delivered")
+        end
+        AddLabel(parent, text, GameFontHighlightSmall)
+    end
+end
+
+local function AddStateList(parent, title, list, note)
+    if #list == 0 then return end
+    AddHeading(parent, title)
+    if note then AddLabel(parent, C(COLOR.dim, note), GameFontHighlightSmall) end
+    table.sort(list, function(a, b) return SortName(a.writ.name, b.writ.name) end)
+    for _, s in ipairs(list) do
+        AddRow(parent, s, s.zoneName ~= "Unknown" and s.zoneName or nil)
+    end
+end
+
+function UI:BuildRoute(container)
+    container:SetLayout("Flow")
+    local Route = CH.Route
+
+    AddButton(container, Route:IsActive() and "Re-plan route" or "Plan route", 150, function() Route:Plan() end)
+    if Route:IsActive() then
+        AddButton(container, "Clear route", 120, function() Route:Clear() end)
+    end
+    local hint = AceGUI:Create("Label")
+    hint:SetWidth(240)
+    hint:SetFontObject(GameFontHighlightSmall)
+    hint:SetText(CH.Nav:HasTomTom() and C(COLOR.dim, "Waypoints via TomTom.")
+        or C(COLOR.inbags, "TomTom not found: using the map pin (one stop at a time)."))
+    container:AddChild(hint)
+
+    local scroll = CreateScroll(container, "route")
+    local route = Route.route
+
+    if not route then
+        AddLabel(scroll, "Plan a route to visit every turn-in for the writs you can deliver right now: writs " ..
+            "that are ready, plus writs in your bags that you have the item for (start them before you arrive).\n\n" ..
+            "Stops are ordered by the shortest straight-line path, starting from where you are. " ..
+            "Each continent is planned separately; flight paths and boats aren't accounted for yet.\n\n" ..
+            "The arrow moves on to the next stop each time you deliver.", GameFontHighlight)
+        return
+    end
+
+    if #route.stops == 0 then
+        AddLabel(scroll, "Nothing to deliver right now.", GameFontHighlight)
+    end
+
+    local current = Route:GetCurrent()
+    local n = 0
+    for _, leg in ipairs(route.legs) do
+        local pending = 0
+        for _, stop in ipairs(leg.stops) do if not stop.done then pending = pending + 1 end end
+        AddHeading(scroll, string.format("%s: %d stop%s, about %s%s", ns.ContinentName(leg.contID),
+            #leg.stops, #leg.stops == 1 and "" or "s", FormatYards(leg.length),
+            leg.fromPlayer and " from here" or ""))
+        for _, stop in ipairs(leg.stops) do
+            n = n + 1
+            local isCurrent = stop == current
+            local label = string.format("%d. %s - %s (%.1f, %.1f)", n, stop.name or "?", stop.zoneName or "?", stop.x, stop.y)
+            if stop.done then
+                label = C(COLOR.done, label .. "  delivered")
+            elseif isCurrent then
+                label = C(COLOR.ready, label .. "  <- current")
+            end
+            local row = AceGUI:Create("InteractiveLabel")
+            row:SetFullWidth(true)
+            row:SetFontObject(isCurrent and GameFontNormal or GameFontHighlight)
+            row:SetText(label)
+            row:SetCallback("OnEnter", function(widget)
+                GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(stop.name or "?")
+                GameTooltip:AddLine(string.format("%s (%.1f, %.1f)", stop.zoneName or "?", stop.x, stop.y), 1, 1, 1)
+                if not stop.done then
+                    GameTooltip:AddLine("Click to point the arrow here.", 0.6, 0.6, 0.6)
+                end
+                GameTooltip:Show()
+            end)
+            row:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+            row:SetCallback("OnClick", function()
+                if not stop.done then Route:SetCurrent(stop.index) end
+            end)
+            scroll:AddChild(row)
+            AddWritLines(scroll, stop.writs)
+        end
+    end
+
+    AddStateList(scroll, "No location yet", route.unroutable,
+        "These turn-ins aren't in the addon's data yet. Accepted writs show their spot on your world map.")
+    AddStateList(scroll, "Not friendly to your faction", route.excluded,
+        "These turn-in NPCs won't deal with your faction.")
+end
+
+---------------------------------------------------------------------------
 -- Frame
 ---------------------------------------------------------------------------
 
@@ -297,11 +461,21 @@ function UI:Create()
     if not tContains(UISpecialFrames, FRAME_GLOBAL) then table.insert(UISpecialFrames, FRAME_GLOBAL) end
 
     local tabs = AceGUI:Create("TabGroup")
-    tabs:SetTabs({ { text = "My Writs", value = "mine" }, { text = "All Writs", value = "all" } })
+    tabs:SetTabs({
+        { text = "My Writs", value = "mine" },
+        { text = "Route", value = "route" },
+        { text = "All Writs", value = "all" },
+    })
     tabs:SetCallback("OnGroupSelected", function(container, _, group)
         self.currentTab = group
         container:ReleaseChildren()
-        if group == "all" then self:BuildAll(container) else self:BuildMine(container) end
+        if group == "all" then
+            self:BuildAll(container)
+        elseif group == "route" then
+            self:BuildRoute(container)
+        else
+            self:BuildMine(container)
+        end
         self:UpdateStatusText()
     end)
     frame:AddChild(tabs)
@@ -328,4 +502,5 @@ function UI:OnEnable()
     self.scrollStatus = {}
     self.currentTab = "mine"
     self:RegisterMessage(ns.MSG_UPDATED, "Redraw")
+    self:RegisterMessage(ns.MSG_ROUTE, "Redraw")
 end

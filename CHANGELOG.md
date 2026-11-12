@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.0
+
+- **Route planner:** the new **Route** tab (or `/writs route`) plans a delivery route for every writ you can hand
+  in right now. That includes writs in your bags that you already have the item for.
+  - Writs delivered to the same NPC are combined into one stop.
+  - Each continent is planned separately, starting with the one you're on, and stops are ordered by the shortest
+    path from where you're standing.
+  - The waypoint arrow moves on to the next stop each time you deliver, and you can click any stop to go there
+    instead.
+  - Turn-in NPCs that won't deal with your faction are left out, and writs whose turn-in location isn't known yet
+    are listed separately.
+- **Waypoints:** click a writ to set a waypoint to its turn-in, or click a zone heading in My Writs for waypoints to
+  every writ in that zone.
+  - Uses TomTom when it's installed. Otherwise it falls back to the game's own map pin, which shows one stop at a
+    time.
+- New slash commands: `/writs route` and `/writs clear`.
+
 ## 1.0.0 (2026-11-12)
 
 First release.
