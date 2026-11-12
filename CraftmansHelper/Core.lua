@@ -30,6 +30,8 @@ local defaults = {
         hideCompleted = false,     -- "All Writs": hide writs already done today
         professionFilter = "ALL",
         tierFilter = "ALL",
+        minimap = { hide = false }, -- LibDBIcon position/visibility
+        tooltips = true,           -- add writ info to item tooltips
     },
     char = {
         -- [questID] = server time of the daily reset after which the completion expires.
@@ -58,6 +60,10 @@ local HELP = {
     "/writs route - plan a delivery route and start the waypoints",
     "/writs clear - clear the route and any waypoints set by this addon",
     "/writs status - print a summary in chat",
+    "/writs shopping - open the shopping list",
+    "/writs minimap - show / hide the minimap button",
+    "/writs tooltips - turn writ info in item tooltips on / off",
+    "/writs export - share the turn-in locations you've recorded",
     "/writs learned - list turn-in locations recorded in-game",
 }
 
@@ -74,6 +80,15 @@ function CH:SlashCommand(input)
         self.Route:Clear()
         self.Nav:Clear("manual")
         self:Print("Waypoints cleared.")
+    elseif cmd == "shopping" then
+        self.UI:Show("shopping")
+    elseif cmd == "minimap" then
+        self.Minimap:Toggle()
+    elseif cmd == "tooltips" then
+        self.db.profile.tooltips = not self.db.profile.tooltips
+        self:Print("Item tooltips " .. (self.db.profile.tooltips and "on." or "off."))
+    elseif cmd == "export" then
+        self.UI:ShowExport()
     elseif cmd == "status" then
         self:PrintStatus()
     elseif cmd == "learned" then
@@ -100,6 +115,32 @@ function CH:PrintLearned()
         n = n + 1
     end
     if n == 0 then self:Print("No turn-in locations recorded yet.") end
+end
+
+-- Recorded turn-in locations the addon doesn't ship with yet, as shareable text.
+-- Format v2 (one line per writ quest): quest;source;id;kind;name;map;x;y
+-- No "|" anywhere: WoW treats it as an escape character in edit boxes
+-- ("||" shows as "|", "|t" starts a texture), which mangled v1 exports.
+function CH:BuildExport()
+    local lines, n = {}, 0
+    local version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")) or "?"
+    table.insert(lines, "CraftmansHelper export v2 (addon " .. version .. ")")
+    local quests = {}
+    for questID in pairs(self.db.global.learned) do table.insert(quests, questID) end
+    table.sort(quests)
+    for _, questID in ipairs(quests) do
+        local l = self.db.global.learned[questID]
+        local writID = ns.WritByQuest[questID]
+        local w = writID and ns.Writs[writID]
+        local static = w and w.turnIn and ns.TurnIns[w.turnIn]
+        if w and l.map and l.x and not (static and static.x) then
+            local name = (l.name or ""):gsub("[|;]", "/")
+            table.insert(lines, string.format("%d;%s;%s;%s;%s;%d;%.1f;%.1f", questID, l.source or "turnin",
+                tostring(l.npcID or ""), l.kind or "", name, l.map, l.x, l.y))
+            n = n + 1
+        end
+    end
+    return table.concat(lines, "\n"), n
 end
 
 function ns.FormatDuration(seconds)

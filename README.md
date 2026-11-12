@@ -3,7 +3,12 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.1.0)
+## Features (v1.2.0)
+
+- Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
+  **Shopping** tab of missing crafted items.
+- Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
+  at runtime when it's installed. `/writs export` shares what you've recorded.
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop, and each continent is ordered separately, starting with the
@@ -20,8 +25,8 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - Records the turn-in NPC and position every time you deliver a writ (`/writs learned`). This fills in the
   Expert/Artisan locations that aren't documented yet.
 
-Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs all`, `/writs status`,
-`/writs learned`.
+Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs shopping`, `/writs all`,
+`/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
 
 ## Install (development)
 
@@ -42,11 +47,15 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
+| `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
+| `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
+| `CraftmansHelper/Minimap.lua` | Minimap button (LibDataBroker + LibDBIcon) |
 | `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |
 | `CraftmansHelper/Solver.lua` | Route ordering (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, splits by continent, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
-| `tests/` | Lua 5.1 tests for the solver and route logic: `pip install lupa`, then `python tests/test_solver.py` and `python tests/test_route.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_sources.py` |
+| `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
 | `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
 
@@ -63,9 +72,13 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 Sources, in order of priority:
 
 1. Coordinates in `Data/TurnIns.lua`.
-2. Locations learned in-game on turn-in.
-3. The quest's own map marker (`C_QuestLog.GetNextWaypoint`), for accepted writs.
-4. The zone only, from `Data/TurnIns.lua`.
+2. Locations recorded in-game at a turn-in.
+3. QuestieDB at runtime, if it's installed.
+4. The quest's map marker: recorded when the writ is accepted, or read live while it's in the quest log.
+5. The zone only, from `Data/TurnIns.lua`.
+
+Players can share their recorded locations with `/writs export`. Merge them with
+`python tools/import_locations.py <file>`.
 
 Current data: 76 of 150 writs have a turn-in NPC with coordinates (all 45 Journeyman writs and 31 of the 60 Expert
 writs). Nothing is known yet for the Artisan writs.
@@ -74,10 +87,8 @@ writs). Nothing is known yet for the Artisan writs.
 
 - ~~Phase 2: TomTom waypoints~~ and ~~Phase 3: route planner (straight-line)~~ shipped in 1.1.0.
 - **Next:** smarter routes that account for flight paths, boats/zeppelins and hearthstone.
-- **Phase 4:** complete the Expert/Artisan data (runtime lookup in QuestieDB when it's installed, plus importing
-  locations learned in-game).
-- **Phase 5:** item tooltips (writ status, and "needed for writ X" on crafted items), shopping list, minimap
-  button, bank/alt tracking.
+- ~~Phase 4: data sources~~ and ~~Phase 5: tooltips, shopping list, minimap button~~ shipped in 1.2.0.
+- Later: tracking writs across alts and the bank.
 
 ## Notes on the data
 
@@ -89,4 +100,5 @@ Copyright (C) 2026 Patrick Larsen. Released under the [GNU General Public Licens
 
 - Turn-in NPCs and coordinates come from [QuestieDB](https://github.com/Questie/Questie) (GPL-3.0).
 - The list of writs comes from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards).
-- Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`).
+- Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`),
+  [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) and LibDBIcon-1.0.

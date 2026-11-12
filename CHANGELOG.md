@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.2.0
+
+- **Minimap button:**
+  - Left-click opens the window; right-click plans a route.
+  - The tooltip shows what's ready, what's in progress, the next route stop, and the time until the daily reset.
+  - `/writs minimap` hides or shows the button. It's also available in the addon compartment.
+- **Item tooltips:**
+  - On a writ: whether it's done today, the item it needs (with how many you have), and where to deliver it.
+  - On a crafted item that a writ asks for: which writs want it, and their status.
+  - `/writs tooltips` turns them off or on.
+- **Shopping tab** (or `/writs shopping`): the crafted items you're still missing for the writs you hold, with how
+  many you need and where each writ goes. Shift-click an item to link it, for example into the Auction House
+  search.
+- **More turn-in locations:**
+  - The delivery spot an accepted writ marks on your map is now remembered, so it stays known after the writ
+    leaves your quest log, and shows up in routes from then on.
+  - If Questie is installed, turn-ins it knows about are used automatically.
+- **Share your locations:** `/writs export` shows the turn-in spots you've recorded that the addon doesn't ship
+  with yet. Paste them into an issue at github.com/emsw0rth/craftmanshelper/issues to add them for everyone.
+- **4 new turn-in locations** from players, including the first Artisan one (Gift of Arthas, Adon in Eastern
+  Plaguelands). The addon now knows 80 of the 150 turn-ins.
+
 ## 1.1.0
 
 - **Route planner:** the new **Route** tab (or `/writs route`) plans a delivery route for every writ you can hand

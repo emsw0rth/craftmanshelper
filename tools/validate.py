@@ -35,7 +35,7 @@ turnins_src = (ROOT / "Data" / "TurnIns.lua").read_text(encoding="utf-8")
 
 rows = re.findall(r"^\s*\[(\d+)\] = \{(.*)\},", writs_src, re.M)
 turnin_keys = set(re.findall(r"^\s*\[(\d+)\]\s*=", turnins_src, re.M))
-turnin_keys |= set(re.findall(r"^\s*([A-Z_]+)\s*=\s*\{", turnins_src, re.M))
+turnin_keys |= set(re.findall(r"^\s*([A-Z_0-9]+)\s*=\s*\{", turnins_src, re.M))
 
 PROFS = {"ALCHEMY", "BLACKSMITHING", "ENGINEERING", "LEATHERWORKING", "TAILORING"}
 TIERS = {"JOURNEYMAN", "EXPERT", "ARTISAN"}

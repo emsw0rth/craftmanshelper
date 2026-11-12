@@ -76,4 +76,8 @@ ns.TurnIns = {
     [9619] = { name = "Torwa Pathfinder", map = 1449, x = 71.6, y = 76.0, faction = "AH" },
     -- Wetlands
     [8305] = { name = "Kixxle", map = 1437, x = 50.2, y = 37.7, faction = "AH" },
+    -- Contributed: recorded in-game by players (/writs export)
+    [4503] = { name = "Mudcrush Durtfeet", map = 1445, x = 35.2, y = 38.2, faction = "AH" }, -- marker
+    [10924] = { name = "Ivy Leafrunner", map = 1448, x = 50.9, y = 81.7 }, -- turnin
+    [11706] = { name = "Adon", map = 1423, x = 50.9, y = 11.5, faction = "AH" }, -- marker
 }

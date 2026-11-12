@@ -59,7 +59,10 @@ end
 local function ShowTooltip(widget, s)
     local w = s.writ
     GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
+    -- Our own rows already show the writ details; skip the item-tooltip hook here.
+    CH.Tooltips.suppress = true
     GameTooltip:SetItemByID(w.item)
+    CH.Tooltips.suppress = false
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("Writ", ItemName(s.id, "Craftsman's Writ: " .. w.name), 1, 0.82, 0, 1, 1, 1)
     GameTooltip:AddDoubleLine("Status", StatusText(s), 1, 0.82, 0, 1, 1, 1)
@@ -464,6 +467,7 @@ function UI:Create()
     tabs:SetTabs({
         { text = "My Writs", value = "mine" },
         { text = "Route", value = "route" },
+        { text = "Shopping", value = "shopping" },
         { text = "All Writs", value = "all" },
     })
     tabs:SetCallback("OnGroupSelected", function(container, _, group)
@@ -473,6 +477,8 @@ function UI:Create()
             self:BuildAll(container)
         elseif group == "route" then
             self:BuildRoute(container)
+        elseif group == "shopping" then
+            self:BuildShopping(container)
         else
             self:BuildMine(container)
         end
@@ -496,6 +502,120 @@ function UI:Toggle()
     else
         self:Show()
     end
+end
+
+---------------------------------------------------------------------------
+-- Tab: Shopping
+---------------------------------------------------------------------------
+
+function UI:BuildShopping(container)
+    container:SetLayout("Flow")
+    local scroll = CreateScroll(container, "shopping")
+
+    -- crafted item -> { need = total, writs = { states } } for writs you hold but can't deliver yet
+    local byItem, items = {}, {}
+    for _, s in pairs(CH.Tracker:GetAllStates()) do
+        local held = s.status == STATUS.ACTIVE or s.status == STATUS.INBAGS
+        if held and s.have < s.need then
+            local entry = byItem[s.writ.item]
+            if not entry then
+                entry = { item = s.writ.item, name = s.writ.name, need = 0, have = s.have, writs = {} }
+                byItem[s.writ.item] = entry
+                table.insert(items, entry)
+            end
+            entry.need = entry.need + s.need
+            table.insert(entry.writs, s)
+        end
+    end
+
+    if #items == 0 then
+        AddLabel(scroll, "Nothing to buy or craft: every writ you hold has its item.\n\n" ..
+            "This list shows the crafted items still missing for writs in your quest log or bags.", GameFontHighlight)
+        return
+    end
+
+    table.sort(items, function(a, b) return SortName(ItemName(a.item, a.name), ItemName(b.item, b.name)) end)
+    AddHeading(scroll, string.format("%d item%s missing", #items, #items == 1 and "" or "s"))
+
+    for _, e in ipairs(items) do
+        local missing = math.max(0, e.need - e.have)
+        local row = AceGUI:Create("InteractiveLabel")
+        row:SetFullWidth(true)
+        row:SetFontObject(GameFontHighlight)
+        row:SetImage(ItemIcon(e.item))
+        row:SetImageSize(18, 18)
+        row:SetText(string.format("  %s   %s   %s", ItemName(e.item, e.name),
+            C(COLOR.active, string.format("need %d more", missing)),
+            C(COLOR.dim, string.format("(have %d of %d)", e.have, e.need))))
+        row:SetCallback("OnEnter", function(widget)
+            GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
+            CH.Tooltips.suppress = true
+            GameTooltip:SetItemByID(e.item)
+            CH.Tooltips.suppress = false
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Shift-click to link (e.g. into the Auction House search).", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        row:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+        row:SetCallback("OnClick", function()
+            if IsModifiedClick("CHATLINK") then
+                local _, link = C_Item.GetItemInfo(e.item)
+                if link then InsertLink(link) end
+            end
+        end)
+        scroll:AddChild(row)
+        for _, s in ipairs(e.writs) do
+            local where = s.turnIn and s.turnIn.name and (s.turnIn.name .. ", " .. (s.zoneName or "?")) or (s.zoneName or "?")
+            AddLabel(scroll, string.format("      %s writ x%d -> %s%s", ns.TIER_NAMES[s.writ.tier], s.need, where,
+                s.status == STATUS.INBAGS and "  " .. C(COLOR.inbags, "(not started)") or ""), GameFontHighlightSmall)
+        end
+    end
+end
+
+---------------------------------------------------------------------------
+-- Export window
+---------------------------------------------------------------------------
+
+function UI:ShowExport()
+    local text, n = CH:BuildExport()
+    if n == 0 then
+        CH:Print("Nothing to share yet: no new turn-in locations recorded. Deliver or accept Expert/Artisan writs to record some.")
+        return
+    end
+    if self.exportFrame then AceGUI:Release(self.exportFrame) end
+
+    local f = AceGUI:Create("Frame")
+    f:SetTitle("Craftman's Helper: share turn-in locations")
+    f:SetLayout("List")
+    f:SetWidth(520)
+    f:SetHeight(360)
+    f:SetCallback("OnClose", function(widget)
+        AceGUI:Release(widget)
+        self.exportFrame = nil
+    end)
+    f:SetStatusText(string.format("%d location%s recorded", n, n == 1 and "" or "s"))
+
+    local intro = AceGUI:Create("Label")
+    intro:SetFullWidth(true)
+    intro:SetFontObject(GameFontHighlight)
+    intro:SetText("Press Ctrl+C to copy, then paste it into a new issue at\n" ..
+        C(COLOR.ready, "github.com/emsw0rth/craftmanshelper/issues") ..
+        "\nso everyone gets these locations in the next release. Thank you!")
+    f:AddChild(intro)
+
+    local box = AceGUI:Create("MultiLineEditBox")
+    box:SetFullWidth(true)
+    box:SetNumLines(12)
+    box:SetLabel("")
+    box:DisableButton(true)
+    box:SetText(text)
+    -- Keep the text intact if someone types into the box.
+    box:SetCallback("OnTextChanged", function(widget) widget:SetText(text); widget:HighlightText() end)
+    f:AddChild(box)
+    box:SetFocus()
+    box:HighlightText()
+
+    self.exportFrame = f
 end
 
 function UI:OnEnable()

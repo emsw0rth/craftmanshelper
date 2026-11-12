@@ -69,37 +69,96 @@ end
 -- Turn-in location
 ---------------------------------------------------------------------------
 
--- Returns { name, map, x, y, source } or nil. x/y are 0-100 and may be nil.
+-- The delivery spot an accepted writ marks on the world map.
+-- Returns mapID, x, y (0-100); x/y may be nil if only the zone is known.
+-- The quest's POI on its own map is preferred: GetNextWaypoint can point at an
+-- intermediate step (a portal or flight master) when you're in another zone.
+function ns.QuestMarker(questID)
+    local questMap
+    if GetQuestUiMapID then
+        local ok, m = pcall(GetQuestUiMapID, questID)
+        if ok and m and m > 0 then questMap = m end
+    end
+    if questMap and C_QuestLog.GetQuestsOnMap then
+        local ok, list = pcall(C_QuestLog.GetQuestsOnMap, questMap)
+        if ok and type(list) == "table" then
+            for _, info in ipairs(list) do
+                if info.questID == questID and info.x and info.y then
+                    return questMap, info.x * 100, info.y * 100
+                end
+            end
+        end
+    end
+    if C_QuestLog.GetNextWaypoint then
+        local ok, m, x, y = pcall(C_QuestLog.GetNextWaypoint, questID)
+        if ok and m and m > 0 and x and (not questMap or m == questMap) then
+            return m, x * 100, y * 100
+        end
+    end
+    return questMap
+end
+
+-- Turn-in sources, best first:
+--   data      coordinates shipped with the addon (Data/TurnIns.lua)
+--   learned   recorded in-game at a turn-in
+--   questie   QuestieDB at runtime, if installed
+--   marker    the quest's map marker, recorded when the writ was accepted, or live while it's in the log
+-- Returns { name, map, x, y, faction, source } or nil. x/y are 0-100 and may be nil.
 function Tracker:GetTurnIn(writID, inLog)
     local w = ns.Writs[writID]
     local static = w.turnIn and ns.TurnIns[w.turnIn]
     local learned = CH.db.global.learned[w.quest]
+    local staticName = static and static.name
 
     if static and static.x then
-        return { name = static.name, map = static.map, x = static.x, y = static.y, source = "data" }
+        return { name = static.name, map = static.map, x = static.x, y = static.y,
+                 faction = static.faction, source = "data" }
     end
-    if learned and learned.map then
-        return { name = learned.name or (static and static.name), map = learned.map,
-                 x = learned.x, y = learned.y, source = "learned" }
+    if learned and learned.map and learned.x and learned.source ~= "marker" then
+        return { name = learned.name or staticName, map = learned.map, x = learned.x, y = learned.y,
+                 source = "learned" }
     end
-    -- An accepted writ marks its delivery spot on the map; ask the game for it.
-    if inLog and C_QuestLog.GetNextWaypoint then
-        local ok, mapID, x, y = pcall(C_QuestLog.GetNextWaypoint, w.quest)
-        if ok and mapID and mapID > 0 then
-            return { name = static and static.name, map = mapID,
-                     x = x and x * 100, y = y and y * 100, source = "quest" }
+    local q = ns.Questie.GetTurnIn(w.quest)
+    if q then
+        return { name = q.name or staticName, map = q.map, x = q.x, y = q.y, faction = q.faction,
+                 source = "questie" }
+    end
+    if learned and learned.map and learned.x then
+        return { name = learned.name or staticName, map = learned.map, x = learned.x, y = learned.y,
+                 source = "marker" }
+    end
+    if inLog then
+        local map, x, y = ns.QuestMarker(w.quest)
+        if map and x then
+            return { name = staticName, map = map, x = x, y = y, source = "marker" }
+        end
+        if map and not static then
+            return { map = map, source = "marker" }
         end
     end
     if static then
-        return { name = static.name, map = static.map, source = "data" }
-    end
-    if inLog and GetQuestUiMapID then
-        local ok, mapID = pcall(GetQuestUiMapID, w.quest)
-        if ok and mapID and mapID > 0 then
-            return { map = mapID, source = "quest" }
-        end
+        return { name = static.name, map = static.map, faction = static.faction, source = "data" }
     end
     return nil
+end
+
+-- Remember the map marker of an accepted writ, so its turn-in stays known
+-- after the quest leaves the log (and can be exported). Never overwrites a
+-- location recorded at an actual turn-in.
+function Tracker:RecordMarker(questID)
+    local writID = ns.WritByQuest[questID]
+    if not writID then return false end
+    local w = ns.Writs[writID]
+    local static = w.turnIn and ns.TurnIns[w.turnIn]
+    if static and static.x then return false end -- already shipped with the addon
+    local learned = CH.db.global.learned
+    if learned[questID] and learned[questID].source ~= "marker" then return false end
+
+    local map, x, y = ns.QuestMarker(questID)
+    if not (map and x) then return false end
+    learned[questID] = { source = "marker", name = static and static.name, map = map, x = x, y = y,
+                         when = GetServerTime() }
+    return true
 end
 
 ---------------------------------------------------------------------------
@@ -156,7 +215,12 @@ function Tracker:BuildState(writID)
 end
 
 function Tracker:Refresh()
-    for writID in pairs(ns.Writs) do
+    local learned = CH.db.global.learned
+    for writID, w in pairs(ns.Writs) do
+        -- Writs in the log mark their turn-in on the map: record it (once) before building state.
+        if not learned[w.quest] and C_QuestLog.GetLogIndexForQuestID(w.quest) then
+            self:RecordMarker(w.quest)
+        end
         self:BuildState(writID)
     end
     self:SendMessage(ns.MSG_UPDATED)
@@ -221,7 +285,7 @@ function Tracker:QUEST_TURNED_IN(_, questID)
     local p = self.pendingTurnIn
     if p and p.questID == questID and p.map then
         CH.db.global.learned[questID] = {
-            npcID = p.npcID, kind = p.kind, name = p.name,
+            source = "turnin", npcID = p.npcID, kind = p.kind, name = p.name,
             map = p.map, x = p.x, y = p.y, when = GetServerTime(),
         }
     end
