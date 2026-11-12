@@ -1,0 +1,14 @@
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Packaging output
+.release/
+*.zip
