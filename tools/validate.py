@@ -80,7 +80,8 @@ for _, body in rows:
         per_prof[p] += 1
 
 print(f"{len(rows)} writs, {known} with a known turn-in location (zone).")
-print(f"warning: {len(npc_only)} turn-in NPC IDs have no TurnIns.lua entry yet: {', '.join(sorted(npc_only))}")
+if npc_only:
+    print(f"warning: {len(npc_only)} turn-in NPC IDs have no TurnIns.lua entry yet: {', '.join(sorted(npc_only))}")
 print("per profession:", ", ".join(f"{p.title()} {n}" for p, n in sorted(per_prof.items())))
 if errors:
     print("\nFAILED:")

@@ -12,3 +12,6 @@ __pycache__/
 # Packaging output
 .release/
 *.zip
+
+# Local deploy script
+deploy.ps1

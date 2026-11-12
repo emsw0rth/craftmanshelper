@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Status: Phase 1 (tracking)
+## Features (v1.0.0)
 
 - **My Writs** tab: the writs in your quest log (and, optionally, unstarted writs in your bags), grouped by
   continent (Kalimdor, then Eastern Kingdoms) and then by zone, sorted A–Z. Each row shows whether it is ready to
@@ -11,18 +11,14 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - **All Writs** tab: all 150 writs, filterable by profession and level, showing which are already done today.
 - Daily reset countdown in the window's status bar.
 - Records the turn-in NPC and position every time you deliver a writ (`/writs learned`). This fills in the
-  Expert/Artisan locations that Wowhead doesn't have yet.
+  Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs all`, `/writs status`, `/writs learned`.
 
 ## Install (development)
 
-The addon folder is `CraftmansHelper/`. Forever shares the retail `Interface\AddOns` folder. Link it in, rather than
-copying it, so that edits show up after a `/reload`. In PowerShell (adjust the WoW path if yours differs):
-
-```powershell
-New-Item -ItemType Junction -Path "C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\CraftmansHelper" -Target "C:\dev\projects\craftmans-helper\CraftmansHelper"
-```
+The addon folder is `CraftmansHelper/`. Copy it, or link it, into your Forever AddOns folder, for example
+`C:\Games\World of Warcraft\_forever_\Interface\AddOns\CraftmansHelper`, then `/reload` in game.
 
 The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-game with
 `/dump select(4, GetBuildInfo())` if the addon shows as out of date.
@@ -40,6 +36,15 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
+| `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
+
+## Releasing
+
+1. Bump `## Version` in the TOC and add an entry to `CHANGELOG.md`.
+2. Run `python tools/validate.py`.
+3. Run `powershell -ExecutionPolicy Bypass -File tools\package.ps1`. This writes
+   `.release/CraftmansHelper-<version>.zip`, which contains the `CraftmansHelper/` folder.
+4. Upload the zip to CurseForge (game version: WoW Forever), then tag the commit `v<version>`.
 
 ## How turn-in locations are resolved
 
@@ -50,8 +55,8 @@ Sources, in order of priority:
 3. The quest's own map marker (`C_QuestLog.GetNextWaypoint`), for accepted writs.
 4. The zone only, from `Data/TurnIns.lua`.
 
-Current data: 47 of 150 writs have a known zone (all 45 Journeyman writs, plus 2 Expert writs). 33 Expert writs have
-a known NPC ID but no zone yet, and nothing is known for the Artisan writs.
+Current data: 76 of 150 writs have a turn-in NPC with coordinates (all 45 Journeyman writs and 31 of the 60 Expert
+writs). Nothing is known yet for the Artisan writs.
 
 ## Roadmap
 
@@ -59,12 +64,19 @@ a known NPC ID but no zone yet, and nothing is known for the Artisan writs.
   installed.
 - **Phase 3:** route planner, per continent, over unique turn-in stops. Version 1 uses straight-line distance;
   version 2 adds flight paths, boats/zeppelins and hearthstone.
-- **Phase 4:** complete the Expert/Artisan data (throttled Wowhead scraper, plus importing locations learned
-  in-game).
+- **Phase 4:** complete the Expert/Artisan data (runtime lookup in QuestieDB when it's installed, plus importing
+  locations learned in-game).
 - **Phase 5:** item tooltips (writ status, and "needed for writ X" on crafted items), shopping list, minimap
   button, bank/alt tracking.
 
-## Unverified data
+## Notes on the data
 
-- *Shadow Protection Potion*: the quest page also lists item 284583. It is counted as an alternative.
-- *Silver Skeleton Key*: delivered to a "Battered Trunk" object in Duskwood, not an NPC.
+- *Silver Skeleton Key* is delivered to a "Battered Trunk" object in Duskwood, not an NPC.
+
+## Credits and license
+
+Copyright (C) 2026 Patrick Larsen. Released under the [GNU General Public License v3.0](LICENSE.md).
+
+- Turn-in NPCs and coordinates come from [QuestieDB](https://github.com/Questie/Questie) (GPL-3.0).
+- The list of writs comes from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards).
+- Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`).
