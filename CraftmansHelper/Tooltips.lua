@@ -48,6 +48,20 @@ local function AddWritInfo(tooltip, writID)
     tooltip:AddDoubleLine("Needs", string.format("%s  %d/%d", ItemName(s.writ.item, s.writ.name), math.min(s.have, s.need), s.need),
         1, 0.82, 0, haveColor[1], haveColor[2], haveColor[3])
     tooltip:AddDoubleLine("Deliver to", Where(s), 1, 0.82, 0, 1, 1, 1)
+
+    -- AH estimate (Auctionator); left out when there's no price.
+    local est = ns.Prices.GetWritEstimate(writID)
+    if est then
+        local price = ns.FormatMoneyIcons(est.cost)
+        if est.age and est.age > ns.Prices.STALE_DAYS then
+            price = string.format("%s (%d days old)", price, est.age)
+        end
+        tooltip:AddDoubleLine("Estimated price", price, 1, 0.82, 0, 1, 1, 1)
+        if est.repPerGold then
+            tooltip:AddDoubleLine("Rep per gold", string.format("%.1f (%d rep)", est.repPerGold, est.rep),
+                1, 0.82, 0, 1, 1, 1)
+        end
+    end
 end
 
 local function AddCraftInfo(tooltip, writIDs)

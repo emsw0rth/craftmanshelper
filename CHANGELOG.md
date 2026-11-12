@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0
+
+- **Price estimates in writ tooltips** (requires [Auctionator](https://www.curseforge.com/wow/addons/auctionator)):
+  - **Estimated price:** the Auction House price of the items the writ asks for, shown with coin icons. Prices
+    more than 3 days old are marked with their age.
+  - **Rep per gold:** how much reputation the writ gives for each gold spent. Base reputation is 75 for
+    Journeyman, 125 for Expert and 200 for Artisan writs, before any reputation bonuses.
+  - Prices come from your latest Auctionator scan. Both lines are left out when Auctionator isn't installed or
+    has no price for the item.
+
 ## 1.2.0
 
 - **Minimap button:**

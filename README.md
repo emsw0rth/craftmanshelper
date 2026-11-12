@@ -3,8 +3,10 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.2.0)
+## Features (v1.3.0)
 
+- Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
+  Auctionator when it's installed.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
@@ -48,13 +50,14 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
+| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's API; reputation per tier |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
 | `CraftmansHelper/Minimap.lua` | Minimap button (LibDataBroker + LibDBIcon) |
 | `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |
 | `CraftmansHelper/Solver.lua` | Route ordering (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, splits by continent, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_sources.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_sources.py`, `test_prices.py` |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
 | `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
