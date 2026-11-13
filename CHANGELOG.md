@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0
+
+- **Buy Writs tab** (or `/writs buy`, requires Auctionator): the writs for sale on the Auction House, with what
+  each one costs to complete. That's the writ plus the items it asks for.
+  - Sort by price (cheapest first) or by rep per gold.
+  - Filter by level, and hide writs you've already done today (on by default).
+  - 20 writs per page. Hover a writ for the price breakdown, and shift-click to link it, for example into the
+    Auction House search.
+  - Writs whose item has no price yet are listed last.
+- **Settings tab** (or `/writs settings`):
+  - Turn writ info in item tooltips on or off.
+  - Show or hide the minimap button.
+  - **New option, off by default:** include the writ's own Auction House price in the tooltip's estimated price
+    and rep per gold. Use it if you buy your writs rather than loot them.
+
 ## 1.3.0
 
 - **Price estimates in writ tooltips** (requires [Auctionator](https://www.curseforge.com/wow/addons/auctionator)):

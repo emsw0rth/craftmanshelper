@@ -33,20 +33,74 @@ function Prices.GetItemPrice(itemID)
     return price, age
 end
 
--- Estimate for a writ: { cost = copper for the full count, rep, repPerGold, age } or nil.
-function Prices.GetWritEstimate(writID)
+-- Estimate for a writ, or nil when the required item has no price:
+--   { cost = copper, rep, repPerGold, age = days (oldest price used),
+--     writIncluded = true when the writ's own price is part of cost,
+--     writMissing = true when it was asked for but the writ has no price }
+-- includeWrit adds the price of the writ item itself (for players who buy writs).
+function Prices.GetWritEstimate(writID, includeWrit)
     local w = ns.Writs[writID]
     if not w then return nil end
     local unit, age = Prices.GetItemPrice(w.item)
     if not unit then return nil end
     local cost = unit * (w.count or 1)
-    local rep = ns.TIER_REP[w.tier]
-    return {
-        cost = cost,
-        rep = rep,
-        repPerGold = rep and rep / (cost / 10000),
-        age = age,
-    }
+    local est = { age = age }
+    if includeWrit then
+        local writPrice, writAge = Prices.GetItemPrice(writID)
+        if writPrice then
+            cost = cost + writPrice
+            est.writIncluded = true
+            if writAge and (not age or writAge > age) then est.age = writAge end
+        else
+            est.writMissing = true
+        end
+    end
+    est.cost = cost
+    est.rep = ns.TIER_REP[w.tier]
+    est.repPerGold = est.rep and est.rep / (cost / 10000)
+    return est
+end
+
+-- Cost of buying a writ and its item off the AH, or nil when the writ itself has no price:
+--   { writID, writPrice, itemCost (nil when unknown), cost = writ + items (nil when the item
+--     price is unknown), rep, repPerGold (nil without cost), age = oldest price in days }
+function Prices.GetWritBuyEstimate(writID)
+    local w = ns.Writs[writID]
+    if not w then return nil end
+    local writPrice, writAge = Prices.GetItemPrice(writID)
+    if not writPrice then return nil end
+    local e = { writID = writID, writPrice = writPrice, rep = ns.TIER_REP[w.tier], age = writAge }
+    local unit, itemAge = Prices.GetItemPrice(w.item)
+    if unit then
+        e.itemCost = unit * (w.count or 1)
+        e.cost = writPrice + e.itemCost
+        e.repPerGold = e.rep and e.rep / (e.cost / 10000)
+        if itemAge and (not e.age or itemAge > e.age) then e.age = itemAge end
+    end
+    return e
+end
+
+-- Every writ that can be bought, sorted. sortBy: "price" (cheapest first) or "rep" (most rep per
+-- gold first). Writs whose item has no price go last, by writ price. filter(writID) -> bool is optional.
+function Prices.GetBuyList(sortBy, filter)
+    local list = {}
+    for writID in pairs(ns.Writs) do
+        if not filter or filter(writID) then
+            local e = Prices.GetWritBuyEstimate(writID)
+            if e then table.insert(list, e) end
+        end
+    end
+    table.sort(list, function(a, b)
+        if (a.cost ~= nil) ~= (b.cost ~= nil) then return a.cost ~= nil end
+        if a.cost and b.cost then
+            if sortBy == "rep" and a.repPerGold ~= b.repPerGold then return a.repPerGold > b.repPerGold end
+            if a.cost ~= b.cost then return a.cost < b.cost end
+        elseif a.writPrice ~= b.writPrice then
+            return a.writPrice < b.writPrice
+        end
+        return a.writID < b.writID
+    end)
+    return list
 end
 
 -- Money with the game's gold/silver/copper coin icons, like the "Auction" tooltip line.

@@ -50,9 +50,14 @@ local function AddWritInfo(tooltip, writID)
     tooltip:AddDoubleLine("Deliver to", Where(s), 1, 0.82, 0, 1, 1, 1)
 
     -- AH estimate (Auctionator); left out when there's no price.
-    local est = ns.Prices.GetWritEstimate(writID)
+    local est = ns.Prices.GetWritEstimate(writID, CH.db.profile.includeWritPrice)
     if est then
         local price = ns.FormatMoneyIcons(est.cost)
+        if est.writIncluded then
+            price = price .. " (incl. writ)"
+        elseif est.writMissing then
+            price = price .. " (writ price unknown)"
+        end
         if est.age and est.age > ns.Prices.STALE_DAYS then
             price = string.format("%s (%d days old)", price, est.age)
         end

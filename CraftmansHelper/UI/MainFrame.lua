@@ -430,6 +430,187 @@ function UI:BuildRoute(container)
 end
 
 ---------------------------------------------------------------------------
+-- Tab: Buy Writs
+---------------------------------------------------------------------------
+
+local BUY_PAGE_SIZE = 20
+
+local function ShowBuyTooltip(widget, e)
+    local w = ns.Writs[e.writID]
+    GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
+    CH.Tooltips.suppress = true
+    GameTooltip:SetItemByID(e.writID)
+    CH.Tooltips.suppress = false
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Writ", ns.FormatMoneyIcons(e.writPrice), 1, 0.82, 0, 1, 1, 1)
+    local itemLabel = ItemName(w.item, w.name) .. (w.count > 1 and (" x" .. w.count) or "")
+    GameTooltip:AddDoubleLine(itemLabel, e.itemCost and ns.FormatMoneyIcons(e.itemCost) or "no price",
+        1, 0.82, 0, 1, 1, 1)
+    if e.cost then
+        GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(e.cost), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Rep per gold", string.format("%.1f (%d rep)", e.repPerGold, e.rep),
+            1, 0.82, 0, 1, 1, 1)
+    end
+    if e.age and e.age > ns.Prices.STALE_DAYS then
+        GameTooltip:AddLine(string.format("Oldest price is %d days old.", e.age), 1, 0.63, 0.13)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Shift-click to link the writ (e.g. into the Auction House search).", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+local function AddBuyRow(parent, e, done)
+    local w = ns.Writs[e.writID]
+    local row = AceGUI:Create("InteractiveLabel")
+    row:SetFullWidth(true)
+    row:SetFontObject(GameFontHighlight)
+    row:SetImage(ItemIcon(e.writID))
+    row:SetImageSize(16, 16)
+    local text = string.format("  %s %s   ", ItemName(w.item, w.name), C(COLOR.dim, "(" .. ns.TIER_NAMES[w.tier] .. ")"))
+    if e.cost then
+        text = text .. ns.FormatMoneyIcons(e.cost) .. "   " .. C(COLOR.ready, string.format("%.1f rep/g", e.repPerGold))
+    else
+        text = text .. ns.FormatMoneyIcons(e.writPrice) .. " + " .. C(COLOR.inbags, "item price unknown")
+    end
+    if done then text = text .. "   " .. C(COLOR.done, "done today") end
+    row:SetText(text)
+    row:SetCallback("OnEnter", function(widget) ShowBuyTooltip(widget, e) end)
+    row:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+    row:SetCallback("OnClick", function()
+        if IsModifiedClick("CHATLINK") then
+            local _, link = C_Item.GetItemInfo(e.writID)
+            if link then InsertLink(link) end
+        end
+    end)
+    parent:AddChild(row)
+end
+
+function UI:BuildBuy(container)
+    local db = CH.db.profile
+    container:SetLayout("Flow")
+
+    if not ns.Prices.IsAvailable() then
+        local scroll = CreateScroll(container, "buy")
+        AddLabel(scroll, "This tab needs Auctionator for Auction House prices.\n\n" ..
+            "Install Auctionator and scan the Auction House to see which writs are cheapest to buy.", GameFontHighlight)
+        return
+    end
+
+    -- Show another page, scrolled back to the top.
+    local function GoToPage(n)
+        self.buyPage = n
+        self.scrollStatus.buy = nil
+        self:Redraw()
+    end
+    local function Refilter() GoToPage(1) end
+
+    local sort = AceGUI:Create("Dropdown")
+    sort:SetLabel("Sort by")
+    sort:SetWidth(170)
+    sort:SetList({ price = "Price (low to high)", rep = "Rep per gold" }, { "price", "rep" })
+    sort:SetValue(db.buySort)
+    sort:SetCallback("OnValueChanged", function(_, _, v) db.buySort = v; Refilter() end)
+    container:AddChild(sort)
+
+    local tier = AceGUI:Create("Dropdown")
+    tier:SetLabel("Level")
+    tier:SetWidth(130)
+    local tierList, tierOrder = { ALL = "All" }, { "ALL" }
+    for _, t in ipairs(ns.TIERS) do tierList[t] = ns.TIER_NAMES[t]; table.insert(tierOrder, t) end
+    tier:SetList(tierList, tierOrder)
+    tier:SetValue(db.buyTier)
+    tier:SetCallback("OnValueChanged", function(_, _, v) db.buyTier = v; Refilter() end)
+    container:AddChild(tier)
+
+    local hide = AceGUI:Create("CheckBox")
+    hide:SetLabel("Hide done today")
+    hide:SetWidth(150)
+    hide:SetValue(db.buyHideDone)
+    hide:SetCallback("OnValueChanged", function(_, _, v) db.buyHideDone = v; Refilter() end)
+    container:AddChild(hide)
+
+    local list = ns.Prices.GetBuyList(db.buySort, function(writID)
+        if db.buyTier ~= "ALL" and ns.Writs[writID].tier ~= db.buyTier then return false end
+        return not (db.buyHideDone and CH.Tracker:GetState(writID).status == STATUS.DONE)
+    end)
+
+    local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
+    local page = math.min(math.max(self.buyPage or 1, 1), pages)
+    self.buyPage = page
+
+    local prev = AddButton(container, "< Prev", 80, function() GoToPage(page - 1) end)
+    prev:SetDisabled(page <= 1)
+    local info = AceGUI:Create("Label")
+    info:SetWidth(170)
+    info:SetJustifyH("CENTER")
+    info:SetText(string.format("Page %d of %d  (%d writ%s)", page, pages, #list, #list == 1 and "" or "s"))
+    container:AddChild(info)
+    local nextB = AddButton(container, "Next >", 80, function() GoToPage(page + 1) end)
+    nextB:SetDisabled(page >= pages)
+
+    local scroll = CreateScroll(container, "buy")
+    if #list == 0 then
+        AddLabel(scroll, "No writs with an Auction House price.\n\n" ..
+            "Prices come from your latest Auctionator scan. Writs only show up here once Auctionator " ..
+            "has seen them for sale.", GameFontHighlight)
+        return
+    end
+
+    AddLabel(scroll, C(COLOR.dim, "Price = the writ plus the items it asks for, from your latest Auctionator scan."),
+        GameFontHighlightSmall)
+    local first = (page - 1) * BUY_PAGE_SIZE + 1
+    for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
+        local e = list[i]
+        AddBuyRow(scroll, e, not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE)
+    end
+end
+
+---------------------------------------------------------------------------
+-- Tab: Settings
+---------------------------------------------------------------------------
+
+local function AddCheckBox(parent, label, description, value, onChange)
+    local cb = AceGUI:Create("CheckBox")
+    cb:SetFullWidth(true)
+    cb:SetLabel(label)
+    if description then cb:SetDescription(description) end
+    cb:SetValue(value)
+    cb:SetCallback("OnValueChanged", function(_, _, v) onChange(v) end)
+    parent:AddChild(cb)
+    return cb
+end
+
+function UI:BuildSettings(container)
+    local db = CH.db.profile
+    container:SetLayout("Fill")
+    local scroll = CreateScroll(container, "settings")
+
+    AddHeading(scroll, "Tooltips")
+    local writPrice
+    AddCheckBox(scroll, "Show writ info in item tooltips",
+        "Today's status, the item needed and where to deliver it on writs, and which writs want it on crafted items.",
+        db.tooltips, function(v)
+            db.tooltips = v
+            if writPrice then writPrice:SetDisabled(not v) end
+        end)
+
+    AddHeading(scroll, "Price estimates")
+    local hasPrices = ns.Prices.IsAvailable()
+    AddLabel(scroll, hasPrices and C(COLOR.dim, "Prices come from your latest Auctionator scan.")
+        or C(COLOR.inbags, "Auctionator isn't installed, so writ tooltips show no prices."), GameFontHighlightSmall)
+    writPrice = AddCheckBox(scroll, "Include the writ's own price",
+        "Add the Auction House price of the writ itself to the estimated price and rep per gold, " ..
+        "for when you buy writs instead of looting them.",
+        db.includeWritPrice, function(v) db.includeWritPrice = v end)
+    writPrice:SetDisabled(not db.tooltips)
+
+    AddHeading(scroll, "Minimap")
+    AddCheckBox(scroll, "Show the minimap button",
+        "Left-click opens this window, right-click plans a route. Also available in the addon compartment.",
+        not db.minimap.hide, function(v) CH.Minimap:SetShown(v) end)
+end
+
+---------------------------------------------------------------------------
 -- Frame
 ---------------------------------------------------------------------------
 
@@ -469,6 +650,8 @@ function UI:Create()
         { text = "Route", value = "route" },
         { text = "Shopping", value = "shopping" },
         { text = "All Writs", value = "all" },
+        { text = "Buy Writs", value = "buy" },
+        { text = "Settings", value = "settings" },
     })
     tabs:SetCallback("OnGroupSelected", function(container, _, group)
         self.currentTab = group
@@ -479,6 +662,10 @@ function UI:Create()
             self:BuildRoute(container)
         elseif group == "shopping" then
             self:BuildShopping(container)
+        elseif group == "buy" then
+            self:BuildBuy(container)
+        elseif group == "settings" then
+            self:BuildSettings(container)
         else
             self:BuildMine(container)
         end

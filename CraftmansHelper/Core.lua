@@ -32,6 +32,10 @@ local defaults = {
         tierFilter = "ALL",
         minimap = { hide = false }, -- LibDBIcon position/visibility
         tooltips = true,           -- add writ info to item tooltips
+        includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
+        buySort = "price",         -- "Buy Writs" tab: "price" (cheapest first) or "rep" (rep per gold)
+        buyTier = "ALL",
+        buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
     },
     char = {
         -- [questID] = server time of the daily reset after which the completion expires.
@@ -61,6 +65,8 @@ local HELP = {
     "/writs clear - clear the route and any waypoints set by this addon",
     "/writs status - print a summary in chat",
     "/writs shopping - open the shopping list",
+    "/writs buy - writs that are cheapest to buy on the Auction House",
+    "/writs settings - open the settings",
     "/writs minimap - show / hide the minimap button",
     "/writs tooltips - turn writ info in item tooltips on / off",
     "/writs export - share the turn-in locations you've recorded",
@@ -82,6 +88,10 @@ function CH:SlashCommand(input)
         self:Print("Waypoints cleared.")
     elseif cmd == "shopping" then
         self.UI:Show("shopping")
+    elseif cmd == "buy" then
+        self.UI:Show("buy")
+    elseif cmd == "settings" or cmd == "options" or cmd == "config" then
+        self.UI:Show("settings")
     elseif cmd == "minimap" then
         self.Minimap:Toggle()
     elseif cmd == "tooltips" then

@@ -59,10 +59,16 @@ function Minimap:OnEnable()
     end
 end
 
-function Minimap:Toggle()
+function Minimap:SetShown(show)
     if not self.icon then return end
     local cfg = CH.db.profile.minimap
-    cfg.hide = not cfg.hide
+    cfg.hide = not show
     if cfg.hide then self.icon:Hide("CraftmansHelper") else self.icon:Show("CraftmansHelper") end
-    CH:Print(cfg.hide and "Minimap button hidden (/writs minimap to show it again)." or "Minimap button shown.")
+end
+
+function Minimap:Toggle()
+    if not self.icon then return end
+    self:SetShown(CH.db.profile.minimap.hide)
+    CH:Print(CH.db.profile.minimap.hide and "Minimap button hidden (/writs minimap to show it again)."
+        or "Minimap button shown.")
 end

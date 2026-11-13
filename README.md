@@ -3,10 +3,13 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.3.0)
+## Features (v1.4.0)
 
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
-  Auctionator when it's installed.
+  Auctionator when it's installed. Optionally includes the writ's own price.
+- **Buy Writs** tab: writs on the Auction House, cheapest first (writ + required items) or by rep per gold,
+  20 per page.
+- **Settings** tab: item tooltips, writ price in estimates, minimap button.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
@@ -28,7 +31,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs shopping`, `/writs all`,
-`/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
+`/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
 
 ## Install (development)
 
