@@ -101,6 +101,19 @@ def stop_names(route):
     return [route.stops[i].name for i in range(1, len(route.stops) + 1)]
 
 
+# --- Waypoint titles -----------------------------------------------------------
+lua.execute("""ns.Writs = { [1] = { name = "Goblin Rocket Fuel", item = 1 }, [2] = { name = "Draught of Water Breathing", item = 2 },
+    [3] = { name = "Iron Buckle", item = 3 }, [4] = { name = "Bolt of Silk Cloth", item = 4 } }""")
+title = g.ns._StopTitle
+check("title: one writ", title(lua.eval('{ name = "Kixxle", writs = { 1 } }')) == "Kixxle: Goblin Rocket Fuel")
+check("title: names sorted", title(lua.eval('{ name = "Kixxle", writs = { 1, 2 } }'))
+      == "Kixxle: Draught of Water Breathing, Goblin Rocket Fuel")
+t = title(lua.eval('{ name = "Kixxle", writs = { 4, 3, 2, 1 } }'))
+check("title: capped at 3 names", t == "Kixxle: Bolt of Silk Cloth, Draught of Water Breathing, Goblin Rocket Fuel +1 more", t)
+check("title: unknown writ falls back to NPC", title(lua.eval('{ name = "Kixxle", writs = { 99 } }')) == "Kixxle")
+check("title: no NPC name", title(lua.eval('{ writs = { 1 } }')) == "Turn-in: Goblin Rocket Fuel")
+lua.execute("ns.Writs = {}")
+
 # --- Grouping, filtering, ordering ------------------------------------------
 reset()
 lua.execute("""

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1
+
+- **Route waypoints name the writs:** each TomTom waypoint now shows the turn-in NPC and the writs to deliver
+  there, for example "Kixxle: Draught of Water Breathing, Goblin Rocket Fuel". After three writs it adds "+N more".
+- The **Buy Writs** tab now comes before **All Writs**.
+
 ## 1.4.0
 
 - **Buy Writs tab** (or `/writs buy`, requires Auctionator): the writs for sale on the Auction House, with what

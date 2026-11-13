@@ -649,8 +649,8 @@ function UI:Create()
         { text = "My Writs", value = "mine" },
         { text = "Route", value = "route" },
         { text = "Shopping", value = "shopping" },
-        { text = "All Writs", value = "all" },
         { text = "Buy Writs", value = "buy" },
+        { text = "All Writs", value = "all" },
         { text = "Settings", value = "settings" },
     })
     tabs:SetCallback("OnGroupSelected", function(container, _, group)

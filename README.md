@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.4.0)
+## Features (v1.4.1)
 
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
   Auctionator when it's installed. Optionally includes the writ's own price.

@@ -43,10 +43,28 @@ local function PlayerPosition()
     return { contID = contID, instance = instance, wx = wx, wy = wy }
 end
 
+-- Waypoint title: the NPC and the writs to deliver there, e.g.
+-- "Kixxle: Draught of Water Breathing, Goblin Rocket Fuel" (at most 3 names, then "+N more").
+local MAX_TITLE_WRITS = 3
+
 local function StopTitle(stop)
-    local n = #stop.writs
-    return string.format("%s (%d writ%s)", stop.name or "Turn-in", n, n == 1 and "" or "s")
+    local names = {}
+    for _, writID in ipairs(stop.writs) do
+        local w = ns.Writs[writID]
+        local name = w and ((C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(w.item)) or w.name)
+        if name then table.insert(names, name) end
+    end
+    table.sort(names)
+    local shown = {}
+    for i = 1, math.min(#names, MAX_TITLE_WRITS) do shown[i] = names[i] end
+    local text = table.concat(shown, ", ")
+    if #names > MAX_TITLE_WRITS then
+        text = string.format("%s +%d more", text, #names - MAX_TITLE_WRITS)
+    end
+    local who = stop.name or "Turn-in"
+    return text ~= "" and (who .. ": " .. text) or who
 end
+ns._StopTitle = StopTitle -- for tests
 
 ---------------------------------------------------------------------------
 -- Planning
