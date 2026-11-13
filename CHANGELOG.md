@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.0
+
+- **Smarter routes:** the route is now planned by travel time across both continents, instead of straight-line
+  distance with each continent planned on its own.
+  - **Flight paths:** used wherever flying is quicker. The addon learns which flight paths a character knows when
+    you open a flight master's map, so open it once on each continent.
+  - **Boats, zeppelins and the Deeprun Tram** connect the continents and islands.
+  - **Hearthstone:** used once when it's off cooldown and saves at least a minute. The addon learns where it takes
+    you when you use it or set it at an innkeeper. You can turn this off in Settings.
+  - Riding speed follows your riding skill.
+- **Directions for every stop**, for example "Fly from Bragok (The Barrens) to Bera Stonehammer (Tanaris)" or
+  "Take the boat from Stranglethorn Vale to The Barrens", in the Route tab and in chat.
+- **The arrow leads the way:** it points at the flight master or dock first, then at the turn-in NPC, and moves
+  on by itself as you travel.
+- **Route tracker** (`/writs tracker`): a small movable window with the next 5 steps of your route, so the main
+  window can stay closed. Click a stop to head there instead. Its show and lock options are in Settings.
+- **Buy Writs:**
+  - Filter by turn-in zone and NPC.
+  - Each writ shows how many of its item you need, and the tooltip shows where it's delivered.
+- `/writs why` prints the route planner's travel times for the current leg, to help report a route that looks
+  wrong.
+
+Known gaps: Forever's new boat routes (Southshore, Stormwind, Steamwheedle Port, Zephras Isle) aren't included
+yet, and some dock positions are estimates.
+
 ## 1.4.1
 
 - **Route waypoints name the writs:** each TomTom waypoint now shows the turn-in NPC and the writs to deliver

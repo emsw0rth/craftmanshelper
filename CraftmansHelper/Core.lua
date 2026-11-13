@@ -36,10 +36,18 @@ local defaults = {
         buySort = "price",         -- "Buy Writs" tab: "price" (cheapest first) or "rep" (rep per gold)
         buyTier = "ALL",
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
+        buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
+        buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
+        tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
+        useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
     },
     char = {
         -- [questID] = server time of the daily reset after which the completion expires.
         completed = {},
+        -- Flight masters whose flight path this character knows: [npcID] = true (FlightPaths.lua).
+        flightPaths = {},
+        -- Where the Hearthstone takes you: { name = bind location, map, x, y } (Hearth.lua).
+        hearth = nil,
     },
     global = {
         -- Turn-in locations recorded in-game: [questID] = { npcID, name, map, x, y }
@@ -63,6 +71,8 @@ local HELP = {
     "/writs all - open the All Writs tab",
     "/writs route - plan a delivery route and start the waypoints",
     "/writs clear - clear the route and any waypoints set by this addon",
+    "/writs tracker - show / hide the small route tracker window",
+    "/writs why - show the route planner's travel times to the current stop",
     "/writs status - print a summary in chat",
     "/writs shopping - open the shopping list",
     "/writs buy - writs that are cheapest to buy on the Auction House",
@@ -88,6 +98,13 @@ function CH:SlashCommand(input)
         self:Print("Waypoints cleared.")
     elseif cmd == "shopping" then
         self.UI:Show("shopping")
+    elseif cmd == "why" then
+        self.Route:Explain()
+    elseif cmd == "tracker" then
+        local shown = not self.db.profile.tracker.shown
+        self.RouteTracker:SetShown(shown)
+        self:Print("Route tracker " .. (shown and "on" or "off") ..
+            ((shown and not self.Route:IsActive()) and " (it appears once you plan a route)." or "."))
     elseif cmd == "buy" then
         self.UI:Show("buy")
     elseif cmd == "settings" or cmd == "options" or cmd == "config" then

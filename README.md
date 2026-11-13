@@ -3,24 +3,27 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.4.1)
+## Features (v1.5.0)
 
+- **Route** tab: plans a delivery route over every writ you can hand in right now.
+  - Writs delivered to the same NPC become one stop.
+  - Stops are ordered by travel time across both continents, using the flight paths the character knows, boats,
+    zeppelins, the Deeprun Tram and, once, the Hearthstone when it saves time.
+  - Each stop comes with directions ("Fly from … to …", "Take the boat from … to …"). The arrow (TomTom, or the
+    game's map pin) points at the flight master or dock first, then at the NPC, and moves on as you travel and
+    deliver.
+  - A small **route tracker** window shows the next 5 steps while a route is active.
+  - `/writs why` prints the planner's travel times for the current leg.
+- Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
   Auctionator when it's installed. Optionally includes the writ's own price.
 - **Buy Writs** tab: writs on the Auction House, cheapest first (writ + required items) or by rep per gold,
-  20 per page.
-- **Settings** tab: item tooltips, writ price in estimates, minimap button.
+  filterable by level, turn-in zone and NPC, 20 per page.
+- **Settings** tab: item tooltips, writ price in estimates, Hearthstone use, route tracker, minimap button.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
   at runtime when it's installed. `/writs export` shares what you've recorded.
-
-- **Route** tab: plans a delivery route over every writ you can hand in right now.
-  - Writs delivered to the same NPC become one stop, and each continent is ordered separately, starting with the
-    one you're on.
-  - Navigation uses TomTom waypoints, or the game's map pin as a fallback, and moves to the next stop after each
-    delivery.
-- Click a writ, or a zone heading, to set waypoints to its turn-ins.
 
 - **My Writs** tab: the writs in your quest log (and, optionally, unstarted writs in your bags), grouped by
   continent (Kalimdor, then Eastern Kingdoms) and then by zone, sorted A–Z. Each row shows whether it is ready to
@@ -30,8 +33,8 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - Records the turn-in NPC and position every time you deliver a writ (`/writs learned`). This fills in the
   Expert/Artisan locations that aren't documented yet.
 
-Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs shopping`, `/writs all`,
-`/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
+Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
 
 ## Install (development)
 
@@ -49,6 +52,8 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Libs/` | Embedded Ace3 (LibStub, CallbackHandler, AceAddon/Event/Timer/Bucket/DB/Console/GUI) |
 | `CraftmansHelper/Data/Writs.lua` | All 150 writs: writ item ID → quest, tier, professions, required item, count, turn-in key |
 | `CraftmansHelper/Data/TurnIns.lua` | Turn-in NPCs → zone (uiMapID) and coordinates where known |
+| `CraftmansHelper/Data/FlightMasters.lua` | Flight masters with position and faction (generated from QuestieDB) |
+| `CraftmansHelper/Data/Transports.lua` | Boats, zeppelins and the tram: the two docks of each link |
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
@@ -57,10 +62,15 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
 | `CraftmansHelper/Minimap.lua` | Minimap button (LibDataBroker + LibDBIcon) |
 | `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |
-| `CraftmansHelper/Solver.lua` | Route ordering (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
-| `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, splits by continent, follows the route |
+| `CraftmansHelper/Solver.lua` | Route ordering on any cost (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
+| `CraftmansHelper/Travel.lua` | Travel-time graph (riding, flights, boats, zeppelins, tram) and shortest paths |
+| `CraftmansHelper/FlightPaths.lua` | Learns the character's known flight paths when a flight map is opened |
+| `CraftmansHelper/Hearth.lua` | Learns where the Hearthstone takes you; cooldown |
+| `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, orders them by travel time, directions, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_sources.py`, `test_prices.py` |
+| `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py` |
+| `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
 | `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
@@ -86,14 +96,29 @@ Sources, in order of priority:
 Players can share their recorded locations with `/writs export`. Merge them with
 `python tools/import_locations.py <file>`.
 
-Current data: 76 of 150 writs have a turn-in NPC with coordinates (all 45 Journeyman writs and 31 of the 60 Expert
-writs). Nothing is known yet for the Artisan writs.
+Current data: 80 of 150 writs have a turn-in NPC with coordinates (all 45 Journeyman writs, 34 of the 60 Expert
+writs and 1 of the 45 Artisan writs).
+
+## How routes are timed
+
+`Travel.lua` builds a graph of the flight masters the character knows, both docks of every boat / zeppelin / tram
+link, the player and the stops, and runs Dijkstra between them. Estimates:
+
+- Riding: straight-line distance × 1.3 inside a zone, × 1.6 across zone borders, at the speed of the riding skill
+  the character knows (on foot below level 40 without one).
+- Flying: straight line × 1.25 at 30.4 yd/s, plus 20 s to take off and land.
+- Boats and zeppelins: 4 minutes including the wait; the tram 2 minutes.
+- Hearthstone: 30 s, used at most once, only where it's off cooldown and saves at least a minute.
+- Teldrassil and the Riverglades count as islands. Landmasses with no known link get a 15-minute fallback.
+
+The dock positions for the Menethil, Auberdine and Rut'theran boats and the tram are estimates (marked "verify"),
+and Forever's new routes aren't in `Data/Transports.lua` yet.
 
 ## Roadmap
 
-- ~~Phase 2: TomTom waypoints~~ and ~~Phase 3: route planner (straight-line)~~ shipped in 1.1.0.
-- **Next:** smarter routes that account for flight paths, boats/zeppelins and hearthstone.
-- ~~Phase 4: data sources~~ and ~~Phase 5: tooltips, shopping list, minimap button~~ shipped in 1.2.0.
+- ~~TomTom waypoints, straight-line route planner~~ (1.1.0), ~~data sources, tooltips, shopping list, minimap
+  button~~ (1.2.0), ~~smarter routes: flight paths, boats/zeppelins, hearthstone~~ (1.5.0).
+- Next: Forever's new boat routes, and verifying the estimated dock positions.
 - Later: tracking writs across alts and the bank.
 
 ## Notes on the data
@@ -104,7 +129,8 @@ writs). Nothing is known yet for the Artisan writs.
 
 Copyright (C) 2026 Patrick Larsen. Released under the [GNU General Public License v3.0](LICENSE.md).
 
-- Turn-in NPCs and coordinates come from [QuestieDB](https://github.com/Questie/Questie) (GPL-3.0).
+- Turn-in NPCs and coordinates, flight masters, and the zeppelin masters and shipmasters used as dock positions
+  come from [QuestieDB](https://github.com/Questie/Questie) (GPL-3.0).
 - The list of writs comes from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards).
 - Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`),
   [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) and LibDBIcon-1.0.

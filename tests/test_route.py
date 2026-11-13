@@ -34,8 +34,13 @@ function C_Map.GetPlayerMapPosition() return { GetXY = function() return player.
 faction = "Alliance"
 function UnitFactionGroup() return faction end
 
+-- Travel data: none by default (tests below add some).
+ns.FlightMasters, ns.Transports = {}, {}
+function UnitLevel() return 60 end
+
 -- Addon object / modules
-CH = { Print = function(self, msg) table.insert(printed, msg) end }
+CH = { Print = function(self, msg) table.insert(printed, msg) end,
+       db = { char = { flightPaths = {} } } }
 function CH:NewModule(name)
     local m = { name = name }
     function m:SendMessage(msg) table.insert(sent, msg) end
@@ -79,7 +84,7 @@ lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(STUBS)
 g = lua.globals()
 lua.execute("function _load(src, name) local f = assert(loadstring(src, name)); f('CraftmansHelper', ns) end")
-for f in ("Solver.lua", "Route.lua"):
+for f in ("Solver.lua", "Travel.lua", "Route.lua"):
     g._load((ADDON / f).read_text(encoding="utf-8"), f)
 Route = g.CH.Route
 same = lua.eval("rawequal")  # lupa wrappers don't compare Lua tables by identity
@@ -150,6 +155,147 @@ lua.execute("player.map = 1440")
 route = Route.Build(Route)
 check("Kalimdor first when standing there", route.legs[1].contID == 1414)
 lua.execute("player.map = 1437")
+
+# --- Travel across continents and by flight -----------------------------------
+# EK stops in Wetlands (1437) and Kalimdor stops in Ashenvale (1440); a boat links the two.
+reset()
+lua.execute("""
+writ(1, "ready", 1437, 50, 50, "EK", "AH")
+writ(2, "ready", 1440, 50, 50, "Kal", "AH")
+ns.Transports = { { kind = "boat", a = { map = 1437, x = 10, y = 10 }, b = { map = 1440, x = 10, y = 10 } } }
+player.map, player.x, player.y = 1437, 0.5, 0.6
+""")
+route = Route.Build(Route)
+check("one route across both continents", stop_names(route) == ["EK", "Kal"], stop_names(route))
+kal = route.stops[2]
+kinds = [kal.steps[i].kind for i in range(1, len(kal.steps) + 1)]
+check("crosses by boat", kinds == ["walk", "boat", "walk"], kinds)
+check("boat directions", g.ns.Travel.Describe(kal.steps[2]) == "Take the boat from Zone1437 to Zone1440",
+      g.ns.Travel.Describe(kal.steps[2]))
+check("legs follow continents", route.legs[1].contID == 1415 and route.legs[2].contID == 1414)
+check("route time adds up", abs(route.seconds - (route.stops[1].seconds + kal.seconds)) < 1e-6)
+
+# Upcoming steps for the route tracker: stop 1, the boat, stop 2.
+Route.Plan(Route)
+up = Route.GetUpcoming(Route, 5)
+texts = [(up[i].kind, up[i].text) for i in range(1, len(up) + 1)]
+check("upcoming: stops and directions in order",
+      texts == [("stop", "EK, Zone1437 (1 writ)"), ("step", "Take the boat from Zone1437 to Zone1440"),
+                ("stop", "Kal, Zone1440 (1 writ)")], texts)
+check("upcoming: capped", len(Route.GetUpcoming(Route, 2)) == 2)
+lua.eval("function() states[1].status = 'done' end")()
+Route.OnWritsUpdated(Route)
+up = Route.GetUpcoming(Route, 5)
+check("upcoming: delivered stop dropped", [up[i].kind for i in range(1, len(up) + 1)] == ["step", "stop"])
+
+# Arrow via the dock: after the first delivery the current stop is across the sea.
+kal = Route.GetCurrent(Route)
+check("via: arrow points at the dock first", g.nav.arrow.point.title == "Take the boat from Zone1437 to Zone1440"
+      and g.nav.arrow.point.map == 1437, g.nav.arrow.point.title)
+place = lua.eval("function(map, x, y) local p = { map = map, x = x, y = y }; ns.Travel.Locate(p); return p end")
+Route.Tick(Route, place(1437, 50, 50))          # still far from the dock
+check("via: nothing changes away from the dock", Route.viaIndex == 1)
+Route.Tick(Route, place(1437, 11, 11))          # at the dock (within 40 yards)
+check("via: reaching the dock moves the arrow to the stop", Route.viaIndex == 2 and same(g.nav.arrow, kal.handle))
+up = Route.GetUpcoming(Route, 5)
+check("via: passed step leaves the tracker", [up[i].kind for i in range(1, len(up) + 1)] == ["stop"])
+Route.SetCurrent(Route, kal.index, True)        # back to the dock step
+Route.Tick(Route, place(1440, 30, 30))          # already across (took another way)
+check("via: being across the sea counts as passed", Route.viaIndex == 2)
+
+# Picking a stop by hand re-plans the way from where you are: standing in Kalimdor, no boat.
+lua.execute("player.map, player.x, player.y = 1440, 0.4, 0.4")
+Route.SetCurrent(Route, kal.index, None, True)
+check("manual pick: directions from here", len(kal.via) == 0 and len(Route.GetUpcoming(Route, 5)) == 1,
+      [kal.via[i].text for i in range(1, len(kal.via) + 1)])
+last = kal.steps[len(kal.steps)]
+check("manual pick: directions end at the picked stop", same(last.to, kal), (last.to.name, kal.name))
+
+# /writs why prints the planner's numbers without leaving a node behind.
+n_before = len(Route.route.graph.nodes)
+lua.execute("printed = {}")
+Route.Explain(Route)
+lines = [str(v) for v in g.printed.values()]
+check("why: explains the way", any("Way to Kal" in l for l in lines) and any("Planned:" in l for l in lines), lines)
+check("why: temporary node removed", len(Route.route.graph.nodes) == n_before)
+lua.execute("player.map, player.x, player.y = 1437, 0.5, 0.6")
+
+Route.Clear(Route)
+check("upcoming: empty without a route", len(Route.GetUpcoming(Route, 5)) == 0)
+
+# A known flight path is used for a long trip; an unknown one isn't.
+reset()
+lua.execute("""
+ns.Transports = {}
+writ(1, "ready", 1441, 90, 90, "Far", "AH")                 -- Thousand Needles, far from Ashenvale
+ns.FlightMasters = {
+    [10] = { name = "FM Ash", map = 1440, x = 50, y = 50, faction = "AH" },
+    [11] = { name = "FM TN", map = 1441, x = 90, y = 88, faction = "AH" },
+}
+player.map, player.x, player.y = 1440, 0.5, 0.5
+""")
+route = Route.Build(Route)
+kinds = [route.stops[1].steps[i].kind for i in range(1, len(route.stops[1].steps) + 1)]
+check("unknown flight paths aren't used", kinds == ["walk"], kinds)
+lua.execute("CH.db.char.flightPaths = { [10] = true, [11] = true }")
+route = Route.Build(Route)
+steps = route.stops[1].steps
+kinds = [steps[i].kind for i in range(1, len(steps) + 1)]
+check("known flight path is used", "fly" in kinds, kinds)
+fly = [steps[i] for i in range(1, len(steps) + 1) if steps[i].kind == "fly"][0]
+check("flight directions", g.ns.Travel.Describe(fly) == "Fly from FM Ash (Zone1440) to FM TN (Zone1441)",
+      g.ns.Travel.Describe(fly))
+lua.execute("""CH.db.char.flightPaths = {}; ns.FlightMasters = {}
+player.map, player.x, player.y = 1437, 0.5, 0.5""")
+
+# --- Hearthstone ------------------------------------------------------------------
+# A stop next to you in the Wetlands, one in Ashenvale with no known way across
+# (15-minute fallback), and a hearth bound in Ashenvale.
+reset()
+lua.execute("""
+ns.Transports = {}
+writ(1, "ready", 1437, 50, 55, "Near", "AH")
+writ(2, "ready", 1440, 50, 50, "Over", "AH")
+player.map, player.x, player.y = 1437, 0.5, 0.5
+hearthOpt = { name = "Inn Town", map = 1440, x = 52, y = 50, readyIn = 0 }
+CH.Hearth = { GetOption = function() return hearthOpt end }
+""")
+route = Route.Build(Route)
+check("hearth: used after the nearby stop", stop_names(route) == ["Near", "Over"] and route.hearthAt == 2,
+      (stop_names(route), route.hearthAt))
+over = route.stops[2]
+kinds = [over.steps[i].kind for i in range(1, len(over.steps) + 1)]
+check("hearth: steps", kinds == ["hearth", "walk"], kinds)
+check("hearth: directions", over.via[1].text == "Use your Hearthstone (Inn Town)", over.via[1].text)
+check("hearth: route is quicker than the fallback", route.seconds < 900, route.seconds)
+
+lua.execute("hearthOpt.readyIn = 100000")
+route = Route.Build(Route)
+check("hearth: not used while on cooldown", route.hearthAt is None and route.seconds >= 900, route.seconds)
+
+lua.execute("hearthOpt.readyIn = 0; states = {}; writ(2, 'ready', 1440, 50, 50, 'Over', 'AH')")
+route = Route.Build(Route)
+check("hearth: can be the first move", route.hearthAt == 1, route.hearthAt)
+
+lua.execute("states = {}; writ(1, 'ready', 1437, 50, 55, 'Near', 'AH'); writ(3, 'ready', 1437, 60, 60, 'Near2', 'AH')")
+route = Route.Build(Route)
+check("hearth: not used when it doesn't help", route.hearthAt is None)
+
+# Following: the hearth step is passed once you're at the inn.
+lua.execute("states = {}; writ(2, 'ready', 1440, 50, 50, 'Over', 'AH')")
+Route.Plan(Route)
+check("hearth: no waypoint for the hearth step itself", same(g.nav.arrow, Route.GetCurrent(Route).handle))
+Route.Tick(Route, place(1440, 52, 50))
+check("hearth: passed at the inn", Route.viaIndex == 2)
+Route.Clear(Route)
+lua.execute("CH.Hearth = nil")
+
+# Back to the three-stop set used below.
+reset()
+lua.execute("""
+writ(1, "ready", 1437, 50.2, 37.7, "Kixxle", "AH"); writ(2, "ready", 1437, 50.2, 37.7, "Kixxle", "AH")
+writ(3, "inbags", 1431, 81.8, 19.8, "Kzixx", "AH", 1); writ(6, "ready", 1440, 60.2, 72.7, "Ash'alari", "AH")
+""")
 
 # --- Following the route -------------------------------------------------------
 route = Route.Plan(Route)

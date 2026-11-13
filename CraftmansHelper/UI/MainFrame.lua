@@ -171,12 +171,11 @@ local function AddButton(parent, text, width, onClick)
     return b
 end
 
-local function FormatYards(yards)
-    yards = math.floor((yards or 0) + 0.5)
-    if yards >= 1000 then
-        return string.format("%d,%03d yd", math.floor(yards / 1000), yards % 1000)
-    end
-    return yards .. " yd"
+local function FormatMinutes(seconds)
+    local m = math.floor((seconds or 0) / 60 + 0.5)
+    if m < 1 then return "under a minute" end
+    if m >= 60 then return string.format("%dh %dm", math.floor(m / 60), m % 60) end
+    return m .. " min"
 end
 
 local function CreateScroll(container, key)
@@ -374,9 +373,17 @@ function UI:BuildRoute(container)
     if not route then
         AddLabel(scroll, "Plan a route to visit every turn-in for the writs you can deliver right now: writs " ..
             "that are ready, plus writs in your bags that you have the item for (start them before you arrive).\n\n" ..
-            "Stops are ordered by the shortest straight-line path, starting from where you are. " ..
-            "Each continent is planned separately; flight paths and boats aren't accounted for yet.\n\n" ..
+            "Stops are ordered by the quickest way round from where you are, using the flight paths you know, " ..
+            "boats and zeppelins, across both continents, and your Hearthstone when it saves time.\n\n" ..
             "The arrow moves on to the next stop each time you deliver.", GameFontHighlight)
+        if CH.FlightPaths:Count() == 0 then
+            AddLabel(scroll, "\n" .. C(COLOR.inbags, "Open a flight master's map once on each continent, so the " ..
+                "addon learns which flight paths you know."), GameFontHighlight)
+        end
+        if CH.db.profile.useHearth and not CH.Hearth:GetSpot() then
+            AddLabel(scroll, "\n" .. C(COLOR.inbags, "Use your Hearthstone once (or set it at an innkeeper), so the " ..
+                "addon learns where it takes you."), GameFontHighlight)
+        end
         return
     end
 
@@ -389,9 +396,8 @@ function UI:BuildRoute(container)
     for _, leg in ipairs(route.legs) do
         local pending = 0
         for _, stop in ipairs(leg.stops) do if not stop.done then pending = pending + 1 end end
-        AddHeading(scroll, string.format("%s: %d stop%s, about %s%s", ns.ContinentName(leg.contID),
-            #leg.stops, #leg.stops == 1 and "" or "s", FormatYards(leg.length),
-            leg.fromPlayer and " from here" or ""))
+        AddHeading(scroll, string.format("%s: %d stop%s, about %s", ns.ContinentName(leg.contID),
+            #leg.stops, #leg.stops == 1 and "" or "s", FormatMinutes(leg.length)))
         for _, stop in ipairs(leg.stops) do
             n = n + 1
             local isCurrent = stop == current
@@ -416,8 +422,15 @@ function UI:BuildRoute(container)
             end)
             row:SetCallback("OnLeave", function() GameTooltip:Hide() end)
             row:SetCallback("OnClick", function()
-                if not stop.done then Route:SetCurrent(stop.index) end
+                if not stop.done then Route:SetCurrent(stop.index, nil, true) end
             end)
+            -- How to get here, when it's more than riding over (steps behind you greyed out).
+            if not stop.done then
+                for k, e in ipairs(stop.via or {}) do
+                    local passed = isCurrent and k < (Route.viaIndex or 1)
+                    AddLabel(scroll, "      " .. C(passed and COLOR.done or COLOR.inbags, e.text), GameFontHighlightSmall)
+                end
+            end
             scroll:AddChild(row)
             AddWritLines(scroll, stop.writs)
         end
@@ -435,6 +448,15 @@ end
 
 local BUY_PAGE_SIZE = 20
 
+-- Filter keys for a writ's turn-in: zone name, and NPC (name + zone, since names can repeat).
+local function BuyKeys(writID)
+    local s = CH.Tracker:GetState(writID)
+    local t = s and s.turnIn
+    local zone = (s and s.zoneName and s.zoneName ~= "") and s.zoneName or "Unknown"
+    local name = t and t.name or "Unknown NPC"
+    return { zone = zone, npc = name .. ";" .. zone, npcLabel = string.format("%s (%s)", name, zone) }
+end
+
 local function ShowBuyTooltip(widget, e)
     local w = ns.Writs[e.writID]
     GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
@@ -443,7 +465,9 @@ local function ShowBuyTooltip(widget, e)
     CH.Tooltips.suppress = false
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("Writ", ns.FormatMoneyIcons(e.writPrice), 1, 0.82, 0, 1, 1, 1)
-    local itemLabel = ItemName(w.item, w.name) .. (w.count > 1 and (" x" .. w.count) or "")
+    local k = BuyKeys(e.writID)
+    GameTooltip:AddDoubleLine("Deliver to", k.npcLabel, 1, 0.82, 0, 1, 1, 1)
+    local itemLabel = ItemName(w.item, w.name) .. " x" .. w.count
     GameTooltip:AddDoubleLine(itemLabel, e.itemCost and ns.FormatMoneyIcons(e.itemCost) or "no price",
         1, 0.82, 0, 1, 1, 1)
     if e.cost then
@@ -466,7 +490,9 @@ local function AddBuyRow(parent, e, done)
     row:SetFontObject(GameFontHighlight)
     row:SetImage(ItemIcon(e.writID))
     row:SetImageSize(16, 16)
-    local text = string.format("  %s %s   ", ItemName(w.item, w.name), C(COLOR.dim, "(" .. ns.TIER_NAMES[w.tier] .. ")"))
+    -- The writ is named after the item it asks for; show how many right here.
+    local text = string.format("  %s %s %s   ", ItemName(w.item, w.name), C(COLOR.ready, "x" .. w.count),
+        C(COLOR.dim, "(" .. ns.TIER_NAMES[w.tier] .. ")"))
     if e.cost then
         text = text .. ns.FormatMoneyIcons(e.cost) .. "   " .. C(COLOR.ready, string.format("%.1f rep/g", e.repPerGold))
     else
@@ -529,8 +555,47 @@ function UI:BuildBuy(container)
     hide:SetCallback("OnValueChanged", function(_, _, v) db.buyHideDone = v; Refilter() end)
     container:AddChild(hide)
 
+    -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
+    local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
+    local keyOf = {}
+    for writID in pairs(ns.Writs) do
+        local k = BuyKeys(writID)
+        keyOf[writID] = k
+        if not zoneList[k.zone] then zoneList[k.zone] = k.zone; table.insert(zoneOrder, k.zone) end
+        if (db.buyZone == "ALL" or db.buyZone == k.zone) and not npcList[k.npc] then
+            npcList[k.npc] = k.npcLabel
+            table.insert(npcOrder, k.npc)
+        end
+    end
+    -- Saved choices that no longer exist (or don't fit the zone) fall back to "All".
+    if not zoneList[db.buyZone] then db.buyZone = "ALL" end
+    if not npcList[db.buyNpc] then db.buyNpc = "ALL" end
+    table.sort(zoneOrder, SortName)
+    table.sort(npcOrder, function(a, b) return SortName(npcList[a], npcList[b]) end)
+    table.insert(zoneOrder, 1, "ALL")
+    table.insert(npcOrder, 1, "ALL")
+
+    local zone = AceGUI:Create("Dropdown")
+    zone:SetLabel("Zone")
+    zone:SetWidth(170)
+    zone:SetList(zoneList, zoneOrder)
+    zone:SetValue(db.buyZone)
+    zone:SetCallback("OnValueChanged", function(_, _, v) db.buyZone = v; db.buyNpc = "ALL"; Refilter() end)
+    container:AddChild(zone)
+
+    local npc = AceGUI:Create("Dropdown")
+    npc:SetLabel("Turn-in NPC")
+    npc:SetWidth(230)
+    npc:SetList(npcList, npcOrder)
+    npc:SetValue(db.buyNpc)
+    npc:SetCallback("OnValueChanged", function(_, _, v) db.buyNpc = v; Refilter() end)
+    container:AddChild(npc)
+
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
         if db.buyTier ~= "ALL" and ns.Writs[writID].tier ~= db.buyTier then return false end
+        local k = keyOf[writID]
+        if db.buyZone ~= "ALL" and k.zone ~= db.buyZone then return false end
+        if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
         return not (db.buyHideDone and CH.Tracker:GetState(writID).status == STATUS.DONE)
     end)
 
@@ -603,6 +668,27 @@ function UI:BuildSettings(container)
         "for when you buy writs instead of looting them.",
         db.includeWritPrice, function(v) db.includeWritPrice = v end)
     writPrice:SetDisabled(not db.tooltips)
+
+    AddHeading(scroll, "Route planning")
+    AddCheckBox(scroll, "Use your Hearthstone",
+        "When it's off cooldown and saves time, the route uses your Hearthstone once.",
+        db.useHearth, function(v) db.useHearth = v end)
+    local spot = CH.Hearth:GetSpot()
+    AddLabel(scroll, spot and C(COLOR.dim, "Hearthstone: " .. spot.name .. " (location learned).")
+        or C(COLOR.inbags, "Hearthstone location not learned yet: use your Hearthstone once, or set it at an innkeeper."),
+        GameFontHighlightSmall)
+    local fp = CH.FlightPaths:Count()
+    AddLabel(scroll, fp > 0 and C(COLOR.dim, string.format("Flight paths known: %d.", fp))
+        or C(COLOR.inbags, "No flight paths learned yet: open a flight master's map once on each continent."),
+        GameFontHighlightSmall)
+
+    AddHeading(scroll, "Route tracker")
+    AddCheckBox(scroll, "Show the route tracker",
+        "A small window with the next 5 steps of your route, shown while a route is active.",
+        db.tracker.shown, function(v) CH.RouteTracker:SetShown(v) end)
+    AddCheckBox(scroll, "Lock its position",
+        "Stop the route tracker from being dragged around.",
+        db.tracker.locked, function(v) CH.RouteTracker:SetLocked(v) end)
 
     AddHeading(scroll, "Minimap")
     AddCheckBox(scroll, "Show the minimap button",
