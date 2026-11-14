@@ -114,5 +114,41 @@ check("buy list empty without writ prices", len(P.GetBuyList("price")) == 0)
 lua.execute("AuctionatorStub.API.v1.GetAuctionPriceByItemID = function() error('boom') end")
 check("API error: no estimate", P.GetWritEstimate(100) is None)
 
+# --- Price sources: TSM, choice in Settings, Auctionator's last full scan ------------
+lua.execute("""
+prices = { [1] = 14239 }
+AuctionatorStub.API.v1.GetAuctionPriceByItemID = function(caller, id) return prices[id] end
+tsmCalls = {}
+TSM_API = {
+    GetCustomPriceValue = function(str, item) table.insert(tsmCalls, { str, item }); return tsmPrices[item] end,
+    IsCustomPriceValid = function(str) if str == "bogus" then return false, "Unknown source" end return true end,
+}
+tsmPrices = { ["i:1"] = 20000 }
+ns.CH = { db = { profile = { priceSource = "AUTO", tsmPrice = "" } } }
+""")
+check("auto prefers Auctionator", P.ActiveSource() == "AUCTIONATOR" and P.GetItemPrice(1)[0] == 14239)
+lua.execute("Auctionator = nil")
+check("auto falls back to TSM", P.ActiveSource() == "TSM" and P.SourceName() == "TradeSkillMaster")
+price, age = P.GetItemPrice(1)
+check("TSM price with the default string", price == 20000 and age is None
+      and g.tsmCalls[1][1] == P.DEFAULT_TSM_PRICE and g.tsmCalls[1][2] == "i:1", (price, age))
+lua.execute('ns.CH.db.profile.tsmPrice = "DBMarket"; tsmCalls = {}')
+P.GetItemPrice(1)
+check("TSM custom price string used", g.tsmCalls[1][1] == "DBMarket")
+bad = P.CheckTSMPrice("bogus")
+check("TSM price check", P.CheckTSMPrice("DBMarket")[0] is True and bad[0] is False and bad[1] == "Unknown source", bad)
+lua.execute("Auctionator = AuctionatorStub; ns.CH.db.profile.priceSource = 'TSM'")
+check("chosen source wins over auto order", P.ActiveSource() == "TSM")
+lua.execute("TSM_API = nil")
+check("chosen source not installed: no prices", P.ActiveSource() is None and P.GetItemPrice(1) is None)
+lua.execute("ns.CH.db.profile.priceSource = 'AUTO'")
+lua.execute("TSM_API = { GetCustomPriceValue = function() error('not ready') end }; Auctionator = nil")
+check("TSM erroring: no price", P.GetItemPrice(1) is None)
+
+lua.execute("Auctionator = AuctionatorStub; AUCTIONATOR_SAVEDVARS = { TimeOfLastReplicateScan = 1700000000 }")
+check("last full scan read from Auctionator", P.LastFullScan() == 1700000000)
+lua.execute("Auctionator = nil")
+check("no last scan when TSM is the source", P.LastFullScan() is None)
+
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

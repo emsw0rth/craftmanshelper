@@ -448,6 +448,33 @@ end
 
 local BUY_PAGE_SIZE = 20
 
+local function Ago(seconds)
+    seconds = math.max(0, seconds)
+    if seconds >= 2 * 86400 then return string.format("%d days ago", math.floor(seconds / 86400)) end
+    if seconds < 60 then return "just now" end
+    return ns.FormatDuration(seconds) .. " ago"
+end
+
+-- One line on where prices come from (and how fresh they are), or why there are none.
+local function PriceSourceText()
+    local P = ns.Prices
+    local key = P.ActiveSource()
+    if key == "AUCTIONATOR" then
+        local t = P.LastFullScan()
+        return C(COLOR.dim, "Prices from Auctionator. " ..
+            (t and ("Last full Auction House scan: " .. Ago(time() - t) .. ".") or "No full Auction House scan yet."))
+    elseif key == "TSM" then
+        local s = CH.db.profile.tsmPrice
+        if not s or s:match("^%s*$") then s = P.DEFAULT_TSM_PRICE end
+        return C(COLOR.dim, "Prices from TradeSkillMaster (" .. s .. ").")
+    end
+    local pref = CH.db.profile.priceSource
+    if pref and pref ~= "AUTO" then
+        return C(COLOR.inbags, P.SOURCE_NAMES[pref] .. " isn't installed, so there are no prices.")
+    end
+    return C(COLOR.inbags, "No price addon found: install Auctionator or TradeSkillMaster for prices.")
+end
+
 -- Filter keys for a writ's turn-in: zone name, and NPC (name + zone, since names can repeat).
 local function BuyKeys(writID)
     local s = CH.Tracker:GetState(writID)
@@ -517,8 +544,10 @@ function UI:BuildBuy(container)
 
     if not ns.Prices.IsAvailable() then
         local scroll = CreateScroll(container, "buy")
-        AddLabel(scroll, "This tab needs Auctionator for Auction House prices.\n\n" ..
-            "Install Auctionator and scan the Auction House to see which writs are cheapest to buy.", GameFontHighlight)
+        AddLabel(scroll, "This tab needs Auction House prices from Auctionator or TradeSkillMaster.\n\n" ..
+            "Install one of them and scan the Auction House to see which writs are cheapest to buy. " ..
+            "You can choose the price source in the Settings tab.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
         return
     end
 
@@ -616,12 +645,12 @@ function UI:BuildBuy(container)
     local scroll = CreateScroll(container, "buy")
     if #list == 0 then
         AddLabel(scroll, "No writs with an Auction House price.\n\n" ..
-            "Prices come from your latest Auctionator scan. Writs only show up here once Auctionator " ..
-            "has seen them for sale.", GameFontHighlight)
+            "Writs only show up here once your price addon has seen them for sale.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
         return
     end
 
-    AddLabel(scroll, C(COLOR.dim, "Price = the writ plus the items it asks for, from your latest Auctionator scan."),
+    AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the writ plus the items it asks for."),
         GameFontHighlightSmall)
     local first = (page - 1) * BUY_PAGE_SIZE + 1
     for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
@@ -660,9 +689,39 @@ function UI:BuildSettings(container)
         end)
 
     AddHeading(scroll, "Price estimates")
-    local hasPrices = ns.Prices.IsAvailable()
-    AddLabel(scroll, hasPrices and C(COLOR.dim, "Prices come from your latest Auctionator scan.")
-        or C(COLOR.inbags, "Auctionator isn't installed, so writ tooltips show no prices."), GameFontHighlightSmall)
+    local P = ns.Prices
+    local source = AceGUI:Create("Dropdown")
+    source:SetLabel("Price source")
+    source:SetWidth(220)
+    local function Label(key)
+        return P.SOURCE_NAMES[key] .. (P.IsInstalled(key) and "" or " (not installed)")
+    end
+    source:SetList({ AUTO = "Automatic (whichever is installed)", AUCTIONATOR = Label("AUCTIONATOR"), TSM = Label("TSM") },
+        { "AUTO", "AUCTIONATOR", "TSM" })
+    source:SetValue(db.priceSource or "AUTO")
+    source:SetCallback("OnValueChanged", function(_, _, v) db.priceSource = v; self:Redraw() end)
+    scroll:AddChild(source)
+
+    local tsm = AceGUI:Create("EditBox")
+    tsm:SetLabel("TSM price (custom price string)")
+    tsm:SetWidth(320)
+    tsm:SetText(db.tsmPrice or "")
+    tsm:SetDisabled(not P.IsInstalled("TSM"))
+    tsm:SetCallback("OnEnterPressed", function(widget, _, text)
+        text = strtrim(text or "")
+        local valid, err = P.CheckTSMPrice(text ~= "" and text or P.DEFAULT_TSM_PRICE)
+        if not valid then
+            CH:Print("TSM can't use that price: " .. tostring(err or "invalid custom price"))
+            widget:SetText(db.tsmPrice or "")
+            return
+        end
+        db.tsmPrice = text
+        self:Redraw()
+    end)
+    scroll:AddChild(tsm)
+    AddLabel(scroll, C(COLOR.dim, "Empty uses " .. P.DEFAULT_TSM_PRICE .. ". Press Enter to save."), GameFontHighlightSmall)
+    AddLabel(scroll, PriceSourceText(), GameFontHighlightSmall)
+
     writPrice = AddCheckBox(scroll, "Include the writ's own price",
         "Add the Auction House price of the writ itself to the estimated price and rep per gold, " ..
         "for when you buy writs instead of looting them.",

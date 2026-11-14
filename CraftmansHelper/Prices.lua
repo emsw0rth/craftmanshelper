@@ -1,4 +1,5 @@
--- Auction House price estimates for writ items, from Auctionator (optional).
+-- Auction House price estimates for writ items, from Auctionator or TradeSkillMaster
+-- (both optional; "AUTO" uses whichever is installed, Auctionator first).
 local ADDON_NAME, ns = ...
 
 local Prices = {}
@@ -10,27 +11,107 @@ ns.TIER_REP = { JOURNEYMAN = 75, EXPERT = 125, ARTISAN = 200 }
 -- Prices older than this many days are flagged as stale.
 Prices.STALE_DAYS = 3
 
-local function Auctionator()
+-- TSM custom price used when no other is set: latest scan's lowest buyout, else market value.
+Prices.DEFAULT_TSM_PRICE = "first(DBMinBuyout, DBMarket)"
+
+Prices.SOURCES = { "AUCTIONATOR", "TSM" } -- order tried by "AUTO"
+Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster" }
+
+local function Profile()
+    local db = ns.CH and ns.CH.db
+    return db and db.profile or {}
+end
+
+local function AuctionatorAPI()
     local api = _G.Auctionator and _G.Auctionator.API and _G.Auctionator.API.v1
     if api and api.GetAuctionPriceByItemID then return api end
 end
 
+local function TSMAPI()
+    local api = _G.TSM_API
+    if type(api) == "table" and api.GetCustomPriceValue then return api end
+end
+
+local function TSMPriceString()
+    local s = Profile().tsmPrice
+    if type(s) ~= "string" or s:match("^%s*$") then return Prices.DEFAULT_TSM_PRICE end
+    return s
+end
+
+-- Each source: available() and get(itemID) -> copper, age in days (or nil).
+local SOURCES = {
+    AUCTIONATOR = {
+        available = function() return AuctionatorAPI() ~= nil end,
+        get = function(itemID)
+            local api = AuctionatorAPI()
+            local ok, price = pcall(api.GetAuctionPriceByItemID, ADDON_NAME, itemID)
+            if not ok or type(price) ~= "number" or price <= 0 then return nil end
+            local age
+            if api.GetAuctionAgeByItemID then
+                local okAge, a = pcall(api.GetAuctionAgeByItemID, ADDON_NAME, itemID)
+                if okAge and type(a) == "number" then age = a end
+            end
+            return price, age
+        end,
+    },
+    TSM = {
+        available = function() return TSMAPI() ~= nil end,
+        get = function(itemID)
+            local ok, price = pcall(TSMAPI().GetCustomPriceValue, TSMPriceString(), "i:" .. itemID)
+            if not ok or type(price) ~= "number" or price <= 0 then return nil end
+            return price, nil -- TSM doesn't say how old a price is
+        end,
+    },
+}
+
+-- The source in use: the one chosen in Settings if it's installed, or with "AUTO"
+-- the first installed one. nil when there's none.
+function Prices.ActiveSource()
+    local pref = Profile().priceSource or "AUTO"
+    if pref ~= "AUTO" then
+        return (SOURCES[pref] and SOURCES[pref].available()) and pref or nil
+    end
+    for _, key in ipairs(Prices.SOURCES) do
+        if SOURCES[key].available() then return key end
+    end
+end
+
 function Prices.IsAvailable()
-    return Auctionator() ~= nil
+    return Prices.ActiveSource() ~= nil
+end
+
+function Prices.IsInstalled(key)
+    return SOURCES[key] ~= nil and SOURCES[key].available()
+end
+
+function Prices.SourceName()
+    local key = Prices.ActiveSource()
+    return key and Prices.SOURCE_NAMES[key]
+end
+
+-- Whether a TSM custom price string is valid: true, or false and TSM's reason.
+function Prices.CheckTSMPrice(s)
+    local api = TSMAPI()
+    if not (api and api.IsCustomPriceValid) then return true end
+    local ok, valid, err = pcall(api.IsCustomPriceValid, s)
+    if not ok then return false, tostring(valid) end
+    return valid and true or false, err
+end
+
+-- Unix time of Auctionator's last full scan of the Auction House, or nil. Not part of
+-- Auctionator's public API, so read defensively; it's account-wide, not per realm.
+function Prices.LastFullScan()
+    if Prices.ActiveSource() ~= "AUCTIONATOR" then return nil end
+    local state = (_G.Auctionator and _G.Auctionator.SavedState) or _G.AUCTIONATOR_SAVEDVARS
+    local t = type(state) == "table" and (state.TimeOfLastReplicateScan or state.TimeOfLastGetAllScan)
+    return type(t) == "number" and t or nil
 end
 
 -- Unit price in copper and age in days (nil when unknown) for an item, or nil.
 function Prices.GetItemPrice(itemID)
-    local api = Auctionator()
-    if not api then return nil end
-    local ok, price = pcall(api.GetAuctionPriceByItemID, ADDON_NAME, itemID)
-    if not ok or type(price) ~= "number" or price <= 0 then return nil end
-    local age
-    if api.GetAuctionAgeByItemID then
-        local okAge, a = pcall(api.GetAuctionAgeByItemID, ADDON_NAME, itemID)
-        if okAge and type(a) == "number" then age = a end
-    end
-    return price, age
+    local key = Prices.ActiveSource()
+    if not key then return nil end
+    return SOURCES[key].get(itemID)
 end
 
 -- Estimate for a writ, or nil when the required item has no price:

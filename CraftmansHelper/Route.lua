@@ -14,9 +14,15 @@ local GROUP = "route"
 local VIA_GROUP = "route-via"  -- the one waypoint for the next flight master / dock on the way
 local ARRIVE_YARDS = 40        -- this close to a flight master or dock counts as "got there"
 local TICK_SECONDS = 1
+local RESTORE_DELAY = 5        -- seconds after login / reload before re-planning a saved route
 local HEARTH_SECONDS = 30      -- 10 s cast plus the trip / loading screen
 local HEARTH_MIN_SAVING = 60   -- only hearth when it saves at least a minute
 local HEARTH_ARRIVE_YARDS = 80 -- within this of the recorded inn = hearthed
+
+-- Whether a route is active, remembered per character so it survives a /reload or relog.
+local function SetSaved(active)
+    if CH.db and CH.db.char then CH.db.char.routeActive = active or nil end
+end
 
 -- A writ belongs on the route when it can be delivered right now, or as soon
 -- as it's started (writ in bags + item in hand).
@@ -213,12 +219,13 @@ local function StopPending(stop)
     return false
 end
 
-function Route:Plan()
+-- restoring: re-planning a route that was active before a /reload or relog.
+function Route:Plan(restoring)
     self:Clear(true)
     local route = self:Build()
     if #route.stops == 0 then
         self.route = route -- keep unroutable/excluded so the UI can explain
-        CH:Print("Nothing to deliver right now.")
+        if not restoring then CH:Print("Nothing to deliver right now.") end
         self:SendMessage(ns.MSG_ROUTE)
         return route
     end
@@ -235,7 +242,9 @@ function Route:Plan()
 
     local writs = 0
     for _, stop in ipairs(route.stops) do writs = writs + #stop.writs end
-    CH:Print(string.format("Route planned: %d writ%s at %d stop%s, about %d min.%s", writs, writs == 1 and "" or "s",
+    SetSaved(true)
+    CH:Print(string.format("Route %s: %d writ%s at %d stop%s, about %d min.%s", restoring and "restored" or "planned",
+        writs, writs == 1 and "" or "s",
         #route.stops, #route.stops == 1 and "" or "s", math.max(1, math.floor((route.seconds or 0) / 60 + 0.5)),
         CH.Nav:HasTomTom() and "" or " Install TomTom to see every stop on the map."))
     self:SendMessage(ns.MSG_ROUTE)
@@ -478,9 +487,23 @@ function Route:Clear(quiet)
     CH.Nav:Clear(GROUP)
     if self.ticker and self.CancelTimer then self:CancelTimer(self.ticker) end
     self.route, self.current, self.viaIndex, self.ticker = nil, nil, nil, nil
+    SetSaved(false)
     if not quiet then self:SendMessage(ns.MSG_ROUTE) end
+end
+
+-- After a /reload or relog the route is gone from memory; plan it again from
+-- where you are, once writ data and turn-in sources have had time to load.
+function Route:OnEnteringWorld()
+    local saved = CH.db and CH.db.char.routeActive
+    if saved and not self.route and not self.restoreTimer and self.ScheduleTimer then
+        self.restoreTimer = self:ScheduleTimer(function()
+            self.restoreTimer = nil
+            if not self.route and CH.db.char.routeActive then self:Plan(true) end
+        end, RESTORE_DELAY)
+    end
 end
 
 function Route:OnEnable()
     self:RegisterMessage(ns.MSG_UPDATED, "OnWritsUpdated")
+    if self.RegisterEvent then self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnEnteringWorld") end
 end

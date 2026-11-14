@@ -33,6 +33,8 @@ local defaults = {
         minimap = { hide = false }, -- LibDBIcon position/visibility
         tooltips = true,           -- add writ info to item tooltips
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
+        priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR" or "TSM" (Prices.lua)
+        tsmPrice = "",             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
         buySort = "price",         -- "Buy Writs" tab: "price" (cheapest first) or "rep" (rep per gold)
         buyTier = "ALL",
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today

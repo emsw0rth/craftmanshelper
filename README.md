@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.5.0)
+## Features (v1.6.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -14,12 +14,14 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
     deliver.
   - A small **route tracker** window shows the next 5 steps while a route is active.
   - `/writs why` prints the planner's travel times for the current leg.
+  - An active route is planned again after a `/reload` or relog.
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
-  Auctionator when it's installed. Optionally includes the writ's own price.
+  Auctionator or TradeSkillMaster (any TSM custom price string). Optionally includes the writ's own price.
 - **Buy Writs** tab: writs on the Auction House, cheapest first (writ + required items) or by rep per gold,
-  filterable by level, turn-in zone and NPC, 20 per page.
-- **Settings** tab: item tooltips, writ price in estimates, Hearthstone use, route tracker, minimap button.
+  filterable by level, turn-in zone and NPC, 20 per page. Shows when Auctionator last did a full scan.
+- **Settings** tab: item tooltips, price source, writ price in estimates, Hearthstone use, route tracker, minimap
+  button.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
@@ -58,7 +60,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
-| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's API; reputation per tier |
+| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API; reputation per tier |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
 | `CraftmansHelper/Minimap.lua` | Minimap button (LibDataBroker + LibDBIcon) |
 | `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |

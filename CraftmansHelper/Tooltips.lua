@@ -49,7 +49,7 @@ local function AddWritInfo(tooltip, writID)
         1, 0.82, 0, haveColor[1], haveColor[2], haveColor[3])
     tooltip:AddDoubleLine("Deliver to", Where(s), 1, 0.82, 0, 1, 1, 1)
 
-    -- AH estimate (Auctionator); left out when there's no price.
+    -- AH estimate (Auctionator or TSM); left out when there's no price.
     local est = ns.Prices.GetWritEstimate(writID, CH.db.profile.includeWritPrice)
     if est then
         local price = ns.FormatMoneyIcons(est.cost)

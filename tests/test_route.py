@@ -340,6 +340,27 @@ lua.execute("states[%d].status = 'done'" % Route.GetCurrent(Route).writs[1])
 Route.OnWritsUpdated(Route)
 check("map pin fallback: pin moves on", g.nav.added == 2 and same(g.nav.arrow, Route.GetCurrent(Route).handle))
 
+# Surviving a /reload: the active route is remembered and planned again.
+lua.execute("""
+nav.tomtom = true; states = {}
+writ(1, "ready", 1437, 10, 10, "A", "AH")
+scheduled = nil
+CH.Route.ScheduleTimer = function(self, fn, delay) scheduled = fn; return {} end
+""")
+Route.Plan(Route)
+check("restore: active route remembered", g.CH.db.char.routeActive == True)
+lua.execute("CH.Route.route, CH.Route.current = nil, nil")   # what a /reload leaves behind
+Route.OnEnteringWorld(Route)
+lua.execute("printed = {}; scheduled()")
+check("restore: planned again after login", Route.IsActive(Route)
+      and any("Route restored" in str(p) for p in g.printed.values()), list(g.printed.values()))
+Route.Clear(Route)
+check("restore: clearing forgets it", g.CH.db.char.routeActive is None)
+lua.execute("scheduled = nil")
+Route.OnEnteringWorld(Route)
+check("restore: nothing to restore", g.scheduled is None)
+lua.execute("CH.Route.ScheduleTimer = nil")
+
 # Nothing to deliver.
 lua.execute("nav.tomtom = true; states = {}")
 route = Route.Plan(Route)

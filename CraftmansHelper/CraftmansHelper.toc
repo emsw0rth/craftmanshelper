@@ -2,9 +2,9 @@
 ## Title: Craftman's Helper
 ## Notes: Tracks your daily Craftsman's Writs for Azeroth Commerce Authority / Durotar Supply and Logistics reputation and plans the delivery route.
 ## Author: patrickwlarsen
-## Version: 1.5.0
+## Version: 1.6.0
 ## SavedVariables: CraftmansHelperDB
-## OptionalDeps: TomTom, QuestieDB, Questie, Auctionator
+## OptionalDeps: TomTom, QuestieDB, Questie, Auctionator, TradeSkillMaster
 ## X-License: GPL-3.0
 ## X-Website: https://github.com/emsw0rth/craftmanshelper
 ## IconTexture: Interface\Icons\INV_Misc_Note_01

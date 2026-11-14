@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0
+
+- **TradeSkillMaster as a price source:**
+  - Writ tooltips and the Buy Writs tab can now use TSM prices as well as Auctionator's.
+  - **Settings → Price source:** Automatic (the default) uses Auctionator, or TSM if Auctionator isn't installed.
+    You can also pick one.
+  - TSM uses any custom price string you enter. The default is `first(DBMinBuyout, DBMarket)`.
+- **Last scan time:** the Buy Writs tab and Settings show when Auctionator last did a full scan of the Auction
+  House.
+- **Your route survives a /reload or relog:** an active route is planned again from where you are a few seconds
+  after logging in.
+
 ## 1.5.0
 
 - **Smarter routes:** the route is now planned by travel time across both continents, instead of straight-line
