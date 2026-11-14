@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.6.0)
+## Features (v1.7.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -55,7 +55,8 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Data/Writs.lua` | All 150 writs: writ item ID → quest, tier, professions, required item, count, turn-in key |
 | `CraftmansHelper/Data/TurnIns.lua` | Turn-in NPCs → zone (uiMapID) and coordinates where known |
 | `CraftmansHelper/Data/FlightMasters.lua` | Flight masters with position and faction (generated from QuestieDB) |
-| `CraftmansHelper/Data/Transports.lua` | Boats, zeppelins and the tram: the two docks of each link |
+| `CraftmansHelper/Data/Transports.lua` | Boats, zeppelins, skycutters and the tram: one-way links between docks (Glyalith's data) |
+| `CraftmansHelper/Data/FlightLengths.lua` | Flown length of every direct flight route, by taxi node (Glyalith's data) |
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
@@ -73,6 +74,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
 | `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
+| `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
 | `tools/validate.py` | Data and TOC sanity checks: `python tools/validate.py` |
 | `tools/package.ps1` | Builds the release zip in `.release/` for upload to CurseForge |
@@ -103,24 +105,28 @@ writs and 1 of the 45 Artisan writs).
 
 ## How routes are timed
 
-`Travel.lua` builds a graph of the flight masters the character knows, both docks of every boat / zeppelin / tram
-link, the player and the stops, and runs Dijkstra between them. Estimates:
+`Travel.lua` builds a graph of the flight masters the character knows, the docks of every boat / zeppelin /
+skycutter / tram link, the player and the stops, and runs Dijkstra between them. Estimates:
 
 - Riding: straight-line distance × 1.3 inside a zone, × 1.6 across zone borders, at the speed of the riding skill
   the character knows (on foot below level 40 without one).
-- Flying: straight line × 1.25 at 30.4 yd/s, plus 20 s to take off and land.
-- Boats and zeppelins: 4 minutes including the wait; the tram 2 minutes.
+- Flying: the measured length of each flight route at 30.4 yd/s, plus 8 s per hop. Only real routes are
+  flown; longer flights chain hops. Flight masters are matched to the game's taxi nodes at login. Any that
+  can't be matched fall back to straight line × 1.25, plus 20 s.
+- Boats, zeppelins and skycutters: 4 minutes including the wait; the tram 2 minutes. Links are one-way
+  (some boats sail a loop).
 - Hearthstone: 30 s, used at most once, only where it's off cooldown and saves at least a minute.
-- Teldrassil and the Riverglades count as islands. Landmasses with no known link get a 15-minute fallback.
+- Teldrassil, the Riverglades and Zephras Isle count as islands. Landmasses with no known link get a 15-minute fallback.
 
-The dock positions for the Menethil, Auberdine and Rut'theran boats and the tram are estimates (marked "verify"),
-and Forever's new routes aren't in `Data/Transports.lua` yet.
+Transport links and flight lengths are Glyalith's WoW Forever data. Re-import them with
+`python tools/import_travel.py <EllesmereUIForeverEssentials folder>`. The Stormwind portal isn't used yet, because
+its arrival point isn't in the data.
 
 ## Roadmap
 
 - ~~TomTom waypoints, straight-line route planner~~ (1.1.0), ~~data sources, tooltips, shopping list, minimap
   button~~ (1.2.0), ~~smarter routes: flight paths, boats/zeppelins, hearthstone~~ (1.5.0).
-- Next: Forever's new boat routes, and verifying the estimated dock positions.
+- ~~Forever's boat routes and measured flight times~~ (Glyalith's data).
 - Later: tracking writs across alts and the bank.
 
 ## Notes on the data
@@ -129,10 +135,13 @@ and Forever's new routes aren't in `Data/Transports.lua` yet.
 
 ## Credits and license
 
-Copyright (C) 2026 Patrick Larsen. Released under the [GNU General Public License v3.0](LICENSE.md).
+Copyright (C) 2026 Emsworth. Released under the [GNU General Public License v3.0](LICENSE.md).
 
 - Turn-in NPCs and coordinates, flight masters, and the zeppelin masters and shipmasters used as dock positions
   come from [QuestieDB](https://github.com/Questie/Questie) (GPL-3.0).
+- Boat, zeppelin, skycutter and tram connections and measured flight route lengths were collected by
+  **Glyalith** for [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) Forever Essentials, and are used
+  with their kind permission. Thank you!
 - The list of writs comes from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards).
 - Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`),
   [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) and LibDBIcon-1.0.

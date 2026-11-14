@@ -30,6 +30,35 @@ function FlightPaths.Match(instance, wx, wy)
     return bestID
 end
 
+-- Taxi node ID of every flight master, so routes can use the measured flight
+-- lengths (Data/FlightLengths.lua). The game lists taxi nodes per map, with
+-- positions, without a flight map open.
+function FlightPaths:MapTaxiNodes()
+    if not (C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap) then return 0 end
+    local maps, seen = { 1414, 1415 }, { [1414] = true, [1415] = true }
+    for _, fm in pairs(ns.FlightMasters) do
+        if not seen[fm.map] then seen[fm.map] = true; table.insert(maps, fm.map) end
+    end
+    local n = 0
+    for _, mapID in ipairs(maps) do
+        local ok, nodes = pcall(C_TaxiMap.GetTaxiNodesForMap, mapID)
+        for _, node in ipairs(ok and nodes or {}) do
+            local pos = node.position
+            if pos and node.nodeID then
+                local x, y = pos.x, pos.y
+                if pos.GetXY then x, y = pos:GetXY() end
+                local instance, wx, wy = ns.WorldPos(mapID, x * 100, y * 100)
+                local npcID = instance and FlightPaths.Match(instance, wx, wy)
+                if npcID and not ns.TaxiNodeOfNpc[npcID] then
+                    ns.TaxiNodeOfNpc[npcID] = node.nodeID
+                    n = n + 1
+                end
+            end
+        end
+    end
+    return n
+end
+
 function FlightPaths:OnTaxiMapOpened()
     local mapID = GetTaxiMapID and GetTaxiMapID()
     local nodes = mapID and C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and C_TaxiMap.GetAllTaxiNodes(mapID)
@@ -44,6 +73,7 @@ function FlightPaths:OnTaxiMapOpened()
             if pos.GetXY then x, y = pos:GetXY() end
             local instance, wx, wy = ns.WorldPos(mapID, x * 100, y * 100)
             local npcID = instance and FlightPaths.Match(instance, wx, wy)
+            if npcID and node.nodeID then ns.TaxiNodeOfNpc[npcID] = node.nodeID end
             if npcID and not known[npcID] then
                 known[npcID] = true
                 added = added + 1
@@ -70,4 +100,6 @@ end
 
 function FlightPaths:OnEnable()
     self:RegisterEvent("TAXIMAP_OPENED", "OnTaxiMapOpened")
+    -- Map data is ready once you're in the world.
+    if C_Timer then C_Timer.After(2, function() self:MapTaxiNodes() end) end
 end

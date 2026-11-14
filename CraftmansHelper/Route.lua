@@ -417,15 +417,12 @@ function Route:Explain()
             if a.kind == "flight" then known = known + 1 end
         end
         if a.kind == "flight" and a.land == here.land then
-            local bestB, bestCost
-            for _, b in ipairs(graph.nodes) do
-                if b ~= a and b.kind == "flight" and b.instance == a.instance and b.land == stop.land then
-                    local c = T.FlySeconds(a, b) + T.WalkSeconds(graph, b, stop)
-                    if not bestCost or c < bestCost then bestB, bestCost = b, c end
-                end
-            end
-            if bestB then
-                table.insert(options, { a = a, b = bestB, total = T.WalkSeconds(graph, here, a) + bestCost })
+            -- Ride to this flight master, then the quickest way on from there.
+            local fromA = T.Search(graph, a)
+            local steps = T.Steps(fromA, stop) or {}
+            if steps[1] and steps[1].kind == "fly" then
+                table.insert(options, { a = a, b = steps[1].to,
+                    total = T.WalkSeconds(graph, here, a) + fromA.seconds[stop.gi] })
             end
         end
     end
@@ -434,6 +431,9 @@ function Route:Explain()
         local o = options[i]
         CH:Print(string.format("  Via %s -> %s: %s", o.a.name or "?", o.b.name or "?", Clock(o.total)))
     end
+    local measured = 0
+    for _ in pairs(ns.TaxiNodeOfNpc) do measured = measured + 1 end
+    CH:Print(string.format("  Flight masters matched to measured flight routes: %d.", measured))
     CH:Print(string.format("  Flight paths known on this continent: %d of %d for your faction.", known, total))
     table.remove(graph.nodes, here.gi) -- the temporary node is always the last one
 end

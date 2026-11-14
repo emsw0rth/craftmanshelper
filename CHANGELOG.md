@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.0
+
+- **Every Forever boat and zeppelin route:** routes now know all 27 boat, zeppelin, skycutter and tram
+  connections, including Forever's new ones:
+  - Southshore, and Stormwind ↔ Auberdine
+  - Steamwheedle Port ↔ the Riverglades
+  - Mulgore ↔ Zephras Isle, and the Dalaran skycutter
+  - the Feathermoon ferry
+
+  The dock positions are exact now, and the loop that some boats sail is followed correctly.
+- **Measured flight times:** flights use the real flown length of every flight route, instead of a straight-line
+  estimate. Only routes that exist are flown, and a trip that takes several hops shows as one flight in the
+  directions.
+- `/writs why` also shows how many flight masters were matched to measured flight routes.
+- **Credits** section at the bottom of the Settings tab.
+- The travel data was collected by **Glyalith** for EllesmereUI Forever Essentials and is used with their kind
+  permission. Thank you!
+
 ## 1.6.0
 
 - **TradeSkillMaster as a price source:**

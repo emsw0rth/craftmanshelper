@@ -115,6 +115,51 @@ s = T.Search(graph, start)
 check("no flights between continents", "fly" not in kinds(T.Steps(s, ek)), kinds(T.Steps(s, ek)))
 lua.execute("ns.FlightMasters = {}")
 
+# One-way links ({ from, to }): the boat back isn't assumed; shared docks are one node.
+lua.execute("""ns.Transports = {
+    { kind = 'boat', from = { map = 1439, x = 60, y = 50 }, to = { map = 1438, x = 10, y = 50 } },
+    { kind = 'boat', from = { map = 1439, x = 60, y = 50 }, to = { map = 1438, x = 20, y = 50 } },
+}""")
+graph = T.NewGraph(lua.eval("{ speed = 7 }"))
+docks = [graph.nodes[i] for i in range(1, len(graph.nodes) + 1) if graph.nodes[i].kind == "dock"]
+check("shared dock is one node", len(docks) == 3, len(docks))
+dark, teld = T.AddNode(graph, g.P(1439, 50, 50)), T.AddNode(graph, g.P(1438, 0, 50))
+check("one-way boat: there", "boat" in kinds(T.Steps(T.Search(graph, dark), teld)))
+check("one-way boat: not back", "boat" not in kinds(T.Steps(T.Search(graph, teld), dark)))
+lua.execute("ns.Transports = {}")
+
+# Measured flight lengths: only listed routes are flown, hops merge into one flight.
+lua.execute("""
+ns.FlightMasters = {
+    [1] = { name = "F1", map = 1440, x = 0, y = 0, faction = "AH" },
+    [2] = { name = "F2", map = 1440, x = 50, y = 50, faction = "AH" },
+    [3] = { name = "F3", map = 1441, x = 90, y = 90, faction = "AH" },
+    [4] = { name = "F4", map = 1441, x = 10, y = 90, faction = "AH" },   -- no taxi node: estimated
+}
+ns.TaxiNodeOfNpc = { [1] = 11, [2] = 12, [3] = 13 }
+ns.FlightLengths = { [110012] = 3000, [120011] = 3000, [120013] = 4000, [130012] = 4000 }
+ns.Travel.ResetFlightData()
+""")
+graph = T.NewGraph(lua.eval("{ speed = 7 }"))
+by = {graph.nodes[i].name: graph.nodes[i] for i in range(1, len(graph.nodes) + 1)}
+check("measured: listed route", abs(T.FlySeconds(by["F1"], by["F2"]) - (3000 / 30.4 + 8)) < 1e-6)
+check("measured: unlisted pair isn't direct", T.FlySeconds(by["F1"], by["F3"]) is None)
+check("no estimated hop into the measured network", T.FlySeconds(by["F1"], by["F4"]) is None)
+lua.execute("ns.FlightMasters[5] = { name = 'F5', map = 1441, x = 20, y = 90, faction = 'AH' }")
+g5 = T.NewGraph(lua.eval("{ speed = 7 }"))
+b5 = {g5.nodes[i].name: g5.nodes[i] for i in range(1, len(g5.nodes) + 1)}
+check("estimate between two unmatched flight masters", T.FlySeconds(b5["F4"], b5["F5"]) is not None)
+lua.execute("ns.FlightMasters[5] = nil")
+start = T.AddNode(graph, g.P(1440, 0, 1))
+far = T.AddNode(graph, g.P(1441, 90, 91))
+s = T.Search(graph, start)
+steps = T.Steps(s, far)
+fly = [steps[i] for i in range(1, len(steps) + 1) if steps[i].kind == "fly"]
+check("hops merge into one flight", len(fly) == 1 and fly[0]["from"].name == "F1" and fly[0].to.name == "F3",
+      [(f["from"].name, f.to.name) for f in fly])
+check("merged flight time", abs(fly[0].seconds - (7000 / 30.4 + 16)) < 1e-6, fly[0].seconds)
+lua.execute("ns.FlightMasters = {}; ns.TaxiNodeOfNpc = {}; ns.FlightLengths = nil; ns.Travel.ResetFlightData()")
+
 # FlightPaths.Match: nearest flight master within 250 yards on the same continent.
 lua.execute("ns.FlightMasters = { [7] = { name = 'X', map = 1440, x = 50, y = 50, faction = 'AH' } }")
 FPm = g.CH.FlightPaths
@@ -150,15 +195,19 @@ check("hearth: setting off", H.GetOption(H) is None)
 
 # Real data: every flight master and dock sits on a map with a known zone, sane coordinates.
 lua.execute("ns2 = {}; function _load2(src, name) local f = assert(loadstring(src, name)); f('CraftmansHelper', ns2) end")
-for f in ("Data/FlightMasters.lua", "Data/Transports.lua"):
+for f in ("Data/FlightMasters.lua", "Data/Transports.lua", "Data/FlightLengths.lua"):
     g._load2((ADDON / f).read_text(encoding="utf-8"), f)
 fms = g.ns2.FlightMasters
 bad = [k for k, v in fms.items() if not (0 <= v.x <= 100 and 0 <= v.y <= 100 and v.faction in ("A", "H", "AH"))]
 check("flight master data sane", len(list(fms.keys())) >= 60 and not bad, bad)
 tr = g.ns2.Transports
 bad = [i for i in range(1, len(tr) + 1)
-       if tr[i].kind not in ("boat", "zeppelin", "tram") or not (0 <= tr[i].a.x <= 100 and 0 <= tr[i].b.y <= 100)]
-check("transport data sane", len(tr) >= 5 and not bad, bad)
+       if tr[i].kind not in ("boat", "zeppelin", "tram", "skycutter", "portal")
+       or not (0 <= tr[i]["from"].x <= 100 and 0 <= tr[i].to.y <= 100)]
+check("transport data sane", len(tr) >= 20 and not bad, bad)
+fl = g.ns2.FlightLengths
+check("flight length data sane", len(list(fl.keys())) >= 300
+      and all(k // 10000 > 0 and k % 10000 > 0 and 0 < v < 30000 for k, v in fl.items()))
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

@@ -21,12 +21,33 @@ Travel.SPEED = { foot = 7, mount60 = 11.2, mount100 = 14 } -- yards per second
 Travel.FLIGHT_SPEED = 30.4      -- yards per second, fitted to measured Classic flight times
 Travel.FLIGHT_DETOUR = 1.25     -- flight paths curve; flown length vs straight line
 Travel.FLIGHT_OVERHEAD = 20     -- seconds: talk to the flight master, take off, land
+Travel.FLIGHT_HOP_SECONDS = 8   -- per hop when flown lengths are known (a multi-hop flight is one trip)
 Travel.GROUND_DETOUR = 1.3      -- roads and terrain vs straight line, within one zone
 Travel.GROUND_DETOUR_ZONES = 1.6 -- between zones: borders are mostly mountains with a few passes
 Travel.FALLBACK_SECONDS = 900   -- reaching another landmass with no known link
 
 -- Maps that can't be reached on foot from the rest of their continent.
-local ISLANDS = { [1438] = "teldrassil", [1457] = "teldrassil", [2548] = "riverglades" }
+local ISLANDS = { [1438] = "teldrassil", [1457] = "teldrassil", [2548] = "riverglades", [2521] = "zephras" }
+
+-- Flight master npcID -> the game's taxi node ID, filled in at login (FlightPaths.lua).
+-- With it, flights use the measured lengths in Data/FlightLengths.lua.
+ns.TaxiNodeOfNpc = ns.TaxiNodeOfNpc or {}
+
+-- Taxi nodes that appear in Data/FlightLengths.lua; for those, only listed routes are flown.
+local covered
+local function Covered(node)
+    if not covered then
+        covered = {}
+        for key in pairs(ns.FlightLengths or {}) do
+            covered[math.floor(key / 10000)] = true
+            covered[key % 10000] = true
+        end
+    end
+    return covered[node]
+end
+
+-- For tests that swap ns.FlightLengths.
+function Travel.ResetFlightData() covered = nil end
 
 function ns.WorldPos(map, x, y)
     if not (C_Map and C_Map.GetWorldPosFromMapPos and CreateVector2D) then return nil end
@@ -70,8 +91,20 @@ function Travel.WalkSeconds(graph, a, b)
     return yards(a, b) * detour / graph.speed
 end
 
--- Flight time between two flight masters on the same continent (seconds).
+-- Flight time between two flight masters on the same continent (seconds), or nil
+-- when there's no direct route between them (the measured data lists every direct
+-- route, so others are flown as several hops).
 function Travel.FlySeconds(a, b)
+    local L = ns.FlightLengths
+    local aKnown = L and a.taxi and Covered(a.taxi)
+    local bKnown = L and b.taxi and Covered(b.taxi)
+    if aKnown or bKnown then
+        -- A measured flight master only flies its measured routes (never an estimated
+        -- hop through one that wasn't matched to a taxi node).
+        local flown = aKnown and bKnown and L[a.taxi * 10000 + b.taxi]
+        if not flown then return nil end
+        return flown / Travel.FLIGHT_SPEED + Travel.FLIGHT_HOP_SECONDS
+    end
     return yards(a, b) * Travel.FLIGHT_DETOUR / Travel.FLIGHT_SPEED + Travel.FLIGHT_OVERHEAD
 end
 
@@ -102,21 +135,31 @@ function Travel.NewGraph(opts)
 
     for npcID, fm in pairs(ns.FlightMasters or {}) do
         if FactionOK(opts.faction, fm.faction) then
-            local node = { kind = "flight", id = npcID, name = fm.name, map = fm.map, x = fm.x, y = fm.y }
+            local node = { kind = "flight", id = npcID, name = fm.name, map = fm.map, x = fm.x, y = fm.y,
+                           taxi = ns.TaxiNodeOfNpc[npcID] }
             if Travel.AddNode(graph, node) and opts.knowsFlight and not opts.knowsFlight(npcID, node) then
                 node.kind = "flight-unknown" -- still a place, but you can't fly from it
             end
         end
     end
 
+    -- Docks shared by several links are one node.
+    local docks = {}
+    local function Dock(p)
+        local key = string.format("%d:%.1f:%.1f", p.map, p.x, p.y)
+        if docks[key] == nil then
+            docks[key] = Travel.AddNode(graph, { kind = "dock", map = p.map, x = p.x, y = p.y }) or false
+        end
+        return docks[key] or nil
+    end
     for _, t in ipairs(ns.Transports or {}) do
         if FactionOK(opts.faction, t.faction) then
-            local a = Travel.AddNode(graph, { kind = "dock", map = t.a.map, x = t.a.x, y = t.a.y })
-            local b = Travel.AddNode(graph, { kind = "dock", map = t.b.map, x = t.b.x, y = t.b.y })
-            if a and b then
-                local seconds = (ns.TRANSPORT_SECONDS or {})[t.kind] or 240
-                table.insert(a.links, { to = b, seconds = seconds, kind = t.kind })
-                table.insert(b.links, { to = a, seconds = seconds, kind = t.kind })
+            local seconds = (ns.TRANSPORT_SECONDS or {})[t.kind] or 240
+            -- { from, to } is one way; { a, b } goes both ways.
+            local from, to = Dock(t.from or t.a), Dock(t.to or t.b)
+            if from and to and from ~= to then
+                table.insert(from.links, { to = to, seconds = seconds, kind = t.kind })
+                if t.a then table.insert(to.links, { to = from, seconds = seconds, kind = t.kind }) end
             end
         end
     end
@@ -133,7 +176,8 @@ local function Edges(graph, u, visit)
                 visit(v, Travel.FALLBACK_SECONDS, "travel")
             end
             if u.kind == "flight" and v.kind == "flight" and v.instance == u.instance then
-                visit(v, Travel.FlySeconds(u, v), "fly")
+                local s = Travel.FlySeconds(u, v)
+                if s then visit(v, s, "fly") end
             end
         end
     end
@@ -171,7 +215,14 @@ function Travel.Steps(search, target)
     while node ~= search.source do
         local edge = search.via[node.gi]
         if not edge then return nil end -- unreachable
-        table.insert(steps, 1, { kind = edge.kind, from = edge.from, to = node, seconds = edge.seconds })
+        local nextStep = steps[1]
+        if edge.kind == "fly" and nextStep and nextStep.kind == "fly" then
+            -- Hops of one flight: you pick the final stop at the flight master.
+            nextStep.from = edge.from
+            nextStep.seconds = nextStep.seconds + edge.seconds
+        else
+            table.insert(steps, 1, { kind = edge.kind, from = edge.from, to = node, seconds = edge.seconds })
+        end
         node = edge.from
     end
     return steps

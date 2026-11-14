@@ -753,6 +753,22 @@ function UI:BuildSettings(container)
     AddCheckBox(scroll, "Show the minimap button",
         "Left-click opens this window, right-click plans a route. Also available in the addon compartment.",
         not db.minimap.hide, function(v) CH.Minimap:SetShown(v) end)
+
+    AddHeading(scroll, "Credits")
+    local version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("CraftmansHelper", "Version")) or "?"
+    local lines = {
+        "Craftman's Helper " .. version .. " by Emsworth, released under the GPL-3.0.",
+        " ",
+        C(COLOR.ready, "Glyalith") .. " - boat, zeppelin, skycutter and tram connections and measured flight times, " ..
+            "collected for EllesmereUI Forever Essentials and used with permission.",
+        C(COLOR.ready, "Questie / QuestieDB") .. " - turn-in NPCs, flight masters and zeppelin and ship masters (GPL-3.0).",
+        C(COLOR.ready, "Wowhead") .. " - the list of Craftsman's Writs.",
+        C(COLOR.ready, "Ace3, LibDataBroker and LibDBIcon") .. " - the libraries this addon is built on.",
+        C(COLOR.ready, "You") .. " - for every turn-in location shared with /writs export.",
+        " ",
+        C(COLOR.dim, "Source, issues and suggestions: github.com/emsw0rth/craftmanshelper"),
+    }
+    for _, line in ipairs(lines) do AddLabel(scroll, line, GameFontHighlightSmall) end
 end
 
 ---------------------------------------------------------------------------
