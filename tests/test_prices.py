@@ -147,6 +147,10 @@ check("TSM erroring: no price", P.GetItemPrice(1) is None)
 
 lua.execute("Auctionator = AuctionatorStub; AUCTIONATOR_SAVEDVARS = { TimeOfLastReplicateScan = 1700000000 }")
 check("last full scan read from Auctionator", P.LastFullScan() == 1700000000)
+lua.execute("AUCTIONATOR_SAVEDVARS = { TimeOfLastBrowseScan = 1700000500 }")
+check("Auctionator's default (browse) scan counts", P.LastFullScan() == 1700000500)
+lua.execute("AUCTIONATOR_SAVEDVARS = { TimeOfLastBrowseScan = 1700000500, TimeOfLastReplicateScan = 1700000900 }")
+check("latest of several scan kinds", P.LastFullScan() == 1700000900)
 lua.execute("Auctionator = nil")
 check("no last scan when TSM is the source", P.LastFullScan() is None)
 

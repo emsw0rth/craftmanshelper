@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1
+
+- **Buy Writs:**
+  - New **Hide writs I have** option, on by default. It hides writs that are already in your quest log, bags
+    or bank.
+  - The sort, filter and page controls are laid out in fixed rows, so they no longer jumble together,
+    whatever the window size.
+- **Fixed:** the Buy Writs tab said there had been no Auction House scan yet after Auctionator's normal scan.
+  It now shows the time of your last scan.
+
 ## 1.7.0
 
 - **Every Forever boat and zeppelin route:** routes now know all 27 boat, zeppelin, skycutter and tram

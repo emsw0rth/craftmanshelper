@@ -38,6 +38,7 @@ local defaults = {
         buySort = "price",         -- "Buy Writs" tab: "price" (cheapest first) or "rep" (rep per gold)
         buyTier = "ALL",
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
+        buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log, bags or bank
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active

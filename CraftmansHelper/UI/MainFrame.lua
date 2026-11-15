@@ -559,30 +559,54 @@ function UI:BuildBuy(container)
     end
     local function Refilter() GoToPage(1) end
 
+    -- Controls in four fixed rows, each sharing the window's width, so they keep their
+    -- place at any window size:
+    --   sort, level / zone, NPC / the two checkboxes / page buttons
+    local function Row()
+        local row = AceGUI:Create("SimpleGroup")
+        row:SetFullWidth(true)
+        row:SetLayout("Flow")
+        container:AddChild(row)
+        return row
+    end
+    local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
+    local rowSort, rowPlace, rowHide, rowPage = Row(), Row(), Row(), Row()
+
     local sort = AceGUI:Create("Dropdown")
     sort:SetLabel("Sort by")
-    sort:SetWidth(170)
+    sort:SetRelativeWidth(HALF)
     sort:SetList({ price = "Price (low to high)", rep = "Rep per gold" }, { "price", "rep" })
     sort:SetValue(db.buySort)
     sort:SetCallback("OnValueChanged", function(_, _, v) db.buySort = v; Refilter() end)
-    container:AddChild(sort)
+    rowSort:AddChild(sort)
 
     local tier = AceGUI:Create("Dropdown")
     tier:SetLabel("Level")
-    tier:SetWidth(130)
+    tier:SetRelativeWidth(HALF)
     local tierList, tierOrder = { ALL = "All" }, { "ALL" }
     for _, t in ipairs(ns.TIERS) do tierList[t] = ns.TIER_NAMES[t]; table.insert(tierOrder, t) end
     tier:SetList(tierList, tierOrder)
     tier:SetValue(db.buyTier)
     tier:SetCallback("OnValueChanged", function(_, _, v) db.buyTier = v; Refilter() end)
-    container:AddChild(tier)
+    rowSort:AddChild(tier)
 
-    local hide = AceGUI:Create("CheckBox")
-    hide:SetLabel("Hide done today")
-    hide:SetWidth(150)
-    hide:SetValue(db.buyHideDone)
-    hide:SetCallback("OnValueChanged", function(_, _, v) db.buyHideDone = v; Refilter() end)
-    container:AddChild(hide)
+    local function HideBox(label, key, tip)
+        local cb = AceGUI:Create("CheckBox")
+        cb:SetLabel(label)
+        cb:SetRelativeWidth(HALF)
+        cb:SetValue(db[key])
+        cb:SetCallback("OnValueChanged", function(_, _, v) db[key] = v; Refilter() end)
+        cb:SetCallback("OnEnter", function(widget)
+            GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText(label, 1, 1, 1)
+            GameTooltip:AddLine(tip, nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        cb:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+        rowHide:AddChild(cb)
+    end
+    HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
+    HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log, bags or bank.")
 
     -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
     local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
@@ -606,40 +630,45 @@ function UI:BuildBuy(container)
 
     local zone = AceGUI:Create("Dropdown")
     zone:SetLabel("Zone")
-    zone:SetWidth(170)
+    zone:SetRelativeWidth(HALF)
     zone:SetList(zoneList, zoneOrder)
     zone:SetValue(db.buyZone)
     zone:SetCallback("OnValueChanged", function(_, _, v) db.buyZone = v; db.buyNpc = "ALL"; Refilter() end)
-    container:AddChild(zone)
+    rowPlace:AddChild(zone)
 
     local npc = AceGUI:Create("Dropdown")
     npc:SetLabel("Turn-in NPC")
-    npc:SetWidth(230)
+    npc:SetRelativeWidth(HALF)
     npc:SetList(npcList, npcOrder)
     npc:SetValue(db.buyNpc)
     npc:SetCallback("OnValueChanged", function(_, _, v) db.buyNpc = v; Refilter() end)
-    container:AddChild(npc)
+    rowPlace:AddChild(npc)
 
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
         if db.buyTier ~= "ALL" and ns.Writs[writID].tier ~= db.buyTier then return false end
         local k = keyOf[writID]
         if db.buyZone ~= "ALL" and k.zone ~= db.buyZone then return false end
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
-        return not (db.buyHideDone and CH.Tracker:GetState(writID).status == STATUS.DONE)
+        local s = CH.Tracker:GetState(writID)
+        if db.buyHideOwned and (s.inLog or (s.writsTotal or 0) > 0) then return false end
+        return not (db.buyHideDone and s.status == STATUS.DONE)
     end)
 
     local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
     local page = math.min(math.max(self.buyPage or 1, 1), pages)
     self.buyPage = page
 
-    local prev = AddButton(container, "< Prev", 80, function() GoToPage(page - 1) end)
+    local prev = AddButton(rowPage, "< Prev", 80, function() GoToPage(page - 1) end)
+    prev:SetRelativeWidth(0.2)
     prev:SetDisabled(page <= 1)
     local info = AceGUI:Create("Label")
-    info:SetWidth(170)
+    info:SetRelativeWidth(0.58)
     info:SetJustifyH("CENTER")
+    info:SetFontObject(GameFontHighlight)
     info:SetText(string.format("Page %d of %d  (%d writ%s)", page, pages, #list, #list == 1 and "" or "s"))
-    container:AddChild(info)
-    local nextB = AddButton(container, "Next >", 80, function() GoToPage(page + 1) end)
+    rowPage:AddChild(info)
+    local nextB = AddButton(rowPage, "Next >", 80, function() GoToPage(page + 1) end)
+    nextB:SetRelativeWidth(0.2)
     nextB:SetDisabled(page >= pages)
 
     local scroll = CreateScroll(container, "buy")

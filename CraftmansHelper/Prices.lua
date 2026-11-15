@@ -100,11 +100,19 @@ end
 
 -- Unix time of Auctionator's last full scan of the Auction House, or nil. Not part of
 -- Auctionator's public API, so read defensively; it's account-wide, not per realm.
+-- Auctionator's default scan is the incremental "browse" scan (TimeOfLastBrowseScan);
+-- the replicate / GetAll scans are options, so the latest of the three counts.
+local SCAN_FIELDS = { "TimeOfLastBrowseScan", "TimeOfLastReplicateScan", "TimeOfLastGetAllScan" }
 function Prices.LastFullScan()
     if Prices.ActiveSource() ~= "AUCTIONATOR" then return nil end
     local state = (_G.Auctionator and _G.Auctionator.SavedState) or _G.AUCTIONATOR_SAVEDVARS
-    local t = type(state) == "table" and (state.TimeOfLastReplicateScan or state.TimeOfLastGetAllScan)
-    return type(t) == "number" and t or nil
+    if type(state) ~= "table" then return nil end
+    local latest
+    for _, field in ipairs(SCAN_FIELDS) do
+        local t = state[field]
+        if type(t) == "number" and (not latest or t > latest) then latest = t end
+    end
+    return latest
 end
 
 -- Unit price in copper and age in days (nil when unknown) for an item, or nil.
