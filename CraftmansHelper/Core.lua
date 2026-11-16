@@ -35,10 +35,10 @@ local defaults = {
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
         priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR" or "TSM" (Prices.lua)
         tsmPrice = "",             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
-        buySort = "price",         -- "Buy Writs" tab: "price" (cheapest first) or "rep" (rep per gold)
-        buyTier = "ALL",
+        buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"
+        buySortDesc = nil,         -- "Buy Writs" tab: reversed order; nil = the column's usual order
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
-        buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log, bags or bank
+        buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log or bags (bank and alts are tagged)
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
@@ -55,6 +55,8 @@ local defaults = {
     global = {
         -- Turn-in locations recorded in-game: [questID] = { npcID, name, map, x, y }
         learned = {},
+        -- Writs and writ items each of your characters holds: ["Realm-Name"] = { ... } (Alts.lua)
+        characters = {},
     },
 }
 

@@ -171,7 +171,12 @@ end
 
 -- Every writ that can be bought, sorted. sortBy: "price" (cheapest first) or "rep" (most rep per
 -- gold first). Writs whose item has no price go last, by writ price. filter(writID) -> bool is optional.
-function Prices.GetBuyList(sortBy, filter)
+-- Writs for sale, sorted. sortBy:
+--   "price"  total cost, low to high      "rep"  rep per gold, low to high
+--   anything else: by valueOf(entry) (a string or number), low to high
+-- desc reverses the order. For price and rep, writs whose item has no price are
+-- always listed last. Ties go to the cheaper writ.
+function Prices.GetBuyList(sortBy, filter, desc, valueOf)
     local list = {}
     for writID in pairs(ns.Writs) do
         if not filter or filter(writID) then
@@ -179,15 +184,38 @@ function Prices.GetBuyList(sortBy, filter)
             if e then table.insert(list, e) end
         end
     end
-    table.sort(list, function(a, b)
+    local function Cheaper(a, b)
         if (a.cost ~= nil) ~= (b.cost ~= nil) then return a.cost ~= nil end
-        if a.cost and b.cost then
-            if sortBy == "rep" and a.repPerGold ~= b.repPerGold then return a.repPerGold > b.repPerGold end
-            if a.cost ~= b.cost then return a.cost < b.cost end
-        elseif a.writPrice ~= b.writPrice then
-            return a.writPrice < b.writPrice
-        end
+        local ca, cb = a.cost or a.writPrice, b.cost or b.writPrice
+        if ca ~= cb then return ca < cb end
         return a.writID < b.writID
+    end
+    local values = {}
+    if valueOf and sortBy ~= "price" and sortBy ~= "rep" then
+        for _, e in ipairs(list) do values[e] = valueOf(e) end
+    end
+    table.sort(list, function(a, b)
+        if sortBy == "price" or sortBy == "rep" then
+            if (a.cost ~= nil) ~= (b.cost ~= nil) then return a.cost ~= nil end
+            if a.cost and b.cost then
+                local va, vb = a.cost, b.cost
+                if sortBy == "rep" then va, vb = a.repPerGold, b.repPerGold end
+                if va ~= vb then
+                    if desc then return va > vb end
+                    return va < vb
+                end
+            elseif a.writPrice ~= b.writPrice then
+                if desc then return a.writPrice > b.writPrice end
+                return a.writPrice < b.writPrice
+            end
+            return Cheaper(a, b)
+        end
+        local va, vb = values[a], values[b]
+        if va ~= vb and va ~= nil and vb ~= nil then
+            if desc then return va > vb end
+            return va < vb
+        end
+        return Cheaper(a, b)
     end)
     return list
 end

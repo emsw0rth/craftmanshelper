@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.7.1)
+## Features (v1.8.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -18,10 +18,13 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
   Auctionator or TradeSkillMaster (any TSM custom price string). Optionally includes the writ's own price.
-- **Buy Writs** tab: writs on the Auction House, cheapest first (writ + required items) or by rep per gold,
-  filterable by level, turn-in zone and NPC, 20 per page. Can hide writs you already have or have done today. Shows when Auctionator last did a full scan.
+- **Buy Writs** tab: a table of the writs on the Auction House (name, level, price of writ + required items,
+  rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
+  and NPC, and hide writs you carry or have done today. Shows when Auctionator last did a full scan.
+- **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
+  item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, Hearthstone use, route tracker, minimap
-  button.
+  button, and the list of remembered characters.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
@@ -60,6 +63,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
 | `CraftmansHelper/Zones.lua` | uiMapID → zone/continent resolution (localized via `C_Map`, English fallback) |
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
+| `CraftmansHelper/Alts.lua` | Writs and writ items on each character's bags and bank (account-wide) |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
 | `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API; reputation per tier |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
@@ -72,7 +76,8 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, orders them by travel time, directions, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py` |
+| `CraftmansHelper/Media/` | Textures (the dotted line between table rows) |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
@@ -126,8 +131,8 @@ its arrival point isn't in the data.
 
 - ~~TomTom waypoints, straight-line route planner~~ (1.1.0), ~~data sources, tooltips, shopping list, minimap
   button~~ (1.2.0), ~~smarter routes: flight paths, boats/zeppelins, hearthstone~~ (1.5.0).
-- ~~Forever's boat routes and measured flight times~~ (Glyalith's data).
-- Later: tracking writs across alts and the bank.
+- ~~Forever's boat routes and measured flight times~~ (Glyalith's data), ~~tracking writs across alts and the
+  bank~~ (1.8.0).
 
 ## Notes on the data
 

@@ -484,6 +484,30 @@ local function BuyKeys(writID)
     return { zone = zone, npc = name .. ";" .. zone, npcLabel = string.format("%s (%s)", name, zone) }
 end
 
+-- Where you already have a writ: { log = bool, bags = n, bank = n, alts = { holders } }.
+local function OwnedWrit(writID)
+    local s = CH.Tracker:GetState(writID)
+    return {
+        log = s.inLog,
+        bags = s.writsInBags or 0,
+        bank = math.max(0, (s.writsTotal or 0) - (s.writsInBags or 0), CH.Alts:InBank(writID, "writs")),
+        alts = CH.Alts:Holders(writID, "writs"),
+    }
+end
+
+-- The "Have" column: where you already have the writ, e.g. "Bank x2, Thrallbank", or "".
+-- Character names are written out in full (in their class colour).
+local function OwnedText(o)
+    local parts = {}
+    if o.log then table.insert(parts, "Quest log") end
+    if o.bags > 0 then table.insert(parts, "Bags" .. (o.bags > 1 and (" x" .. o.bags) or "")) end
+    if o.bank > 0 then table.insert(parts, "Bank" .. (o.bank > 1 and (" x" .. o.bank) or "")) end
+    for _, h in ipairs(o.alts) do
+        table.insert(parts, CH.Alts.ColoredName(h, true) .. (h.count > 1 and (" x" .. h.count) or ""))
+    end
+    return table.concat(parts, ", ")
+end
+
 local function ShowBuyTooltip(widget, e)
     local w = ns.Writs[e.writID]
     GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
@@ -505,37 +529,218 @@ local function ShowBuyTooltip(widget, e)
     if e.age and e.age > ns.Prices.STALE_DAYS then
         GameTooltip:AddLine(string.format("Oldest price is %d days old.", e.age), 1, 0.63, 0.13)
     end
+    local o = OwnedWrit(e.writID)
+    if o.log or o.bags > 0 or o.bank > 0 or #o.alts > 0 then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("You already have this writ", 1, 0.63, 0.13)
+        if o.log then GameTooltip:AddLine("In your quest log", 1, 1, 1) end
+        if o.bags > 0 then GameTooltip:AddDoubleLine("Bags", "x" .. o.bags, 1, 1, 1, 1, 1, 1) end
+        if o.bank > 0 then GameTooltip:AddDoubleLine("Bank", "x" .. o.bank, 1, 1, 1, 1, 1, 1) end
+        for _, h in ipairs(o.alts) do
+            GameTooltip:AddDoubleLine(CH.Alts.ColoredName(h, true), "x" .. h.count, 1, 1, 1, 1, 1, 1)
+        end
+    end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Shift-click to link the writ (e.g. into the Auction House search).", 0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
 
-local function AddBuyRow(parent, e, done)
+-- Buy Writs table. Each column has a fixed share of the width, so the table keeps
+-- its shape whichever writs are on the page; long text wraps.
+local BUY_TITLES = { "Name", "Level", "Price", "Rep/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", "Have" }
+local BUY_KEYS = { "name", "level", "price", "rep", "have" } -- sort key of each column
+local BUY_SORT_NAMES = { name = "Name", level = "Level", price = "Price", rep = "Rep per gold", have = "Have" }
+-- First click on a column: Rep per gold starts with the best, Have with the writs you have.
+local BUY_DESC_FIRST = { rep = true, have = true }
+local SORT_ARROW = { [false] = " |TInterface\\Buttons\\Arrow-Up-Up:12:12:0:-2|t",
+                     [true] = " |TInterface\\Buttons\\Arrow-Down-Up:12:12:0:2|t" }
+-- Share of the width per column, just under 1 in total so rounding never wraps a cell.
+local BUY_WIDTHS = { 0.31, 0.14, 0.20, 0.11, 0.23 }
+
+-- The text of each cell in a writ's row.
+local function BuyCells(e, done)
     local w = ns.Writs[e.writID]
-    local row = AceGUI:Create("InteractiveLabel")
-    row:SetFullWidth(true)
-    row:SetFontObject(GameFontHighlight)
-    row:SetImage(ItemIcon(e.writID))
-    row:SetImageSize(16, 16)
-    -- The writ is named after the item it asks for; show how many right here.
-    local text = string.format("  %s %s %s   ", ItemName(w.item, w.name), C(COLOR.ready, "x" .. w.count),
-        C(COLOR.dim, "(" .. ns.TIER_NAMES[w.tier] .. ")"))
+    -- The writ is named after the item it asks for; show the count when it's more than one.
+    local name = ItemName(w.item, w.name)
+    if w.count > 1 then name = name .. " " .. C(COLOR.ready, "x" .. w.count) end
+    if done then name = name .. "  " .. C(COLOR.done, "done today") end
+    local price, repPerGold
     if e.cost then
-        text = text .. ns.FormatMoneyIcons(e.cost) .. "   " .. C(COLOR.ready, string.format("%.1f rep/g", e.repPerGold))
+        price = ns.FormatMoneyIcons(e.cost)
+        repPerGold = C(COLOR.ready, string.format("%.1f", e.repPerGold))
     else
-        text = text .. ns.FormatMoneyIcons(e.writPrice) .. " + " .. C(COLOR.inbags, "item price unknown")
+        price = ns.FormatMoneyIcons(e.writPrice) .. " + ?"
+        repPerGold = C(COLOR.inbags, "no price")
     end
-    if done then text = text .. "   " .. C(COLOR.done, "done today") end
-    row:SetText(text)
-    row:SetCallback("OnEnter", function(widget) ShowBuyTooltip(widget, e) end)
-    row:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-    row:SetCallback("OnClick", function()
-        if IsModifiedClick("CHATLINK") then
-            local _, link = C_Item.GetItemInfo(e.writID)
+    return { name, C(COLOR.dim, ns.TIER_NAMES[w.tier]), price, repPerGold, OwnedText(OwnedWrit(e.writID)) }
+end
+
+-- The table itself is plain frames, not AceGUI widgets: every row is the same height,
+-- every cell is one line (cut off with "..." when it doesn't fit; the tooltip has it
+-- all) and text is centred vertically. One table frame is made and reused.
+local ROW_HEIGHT = 22
+local HEADER_HEIGHT = 24
+local CELL_PAD = 6
+local LINE = { 0.55, 0.45, 0.2, 0.9 }      -- gold-brown, like the window border
+local HEADER_BG = { 0.25, 0.2, 0.05, 0.5 }
+local DOTS = "Interface\\AddOns\\CraftmansHelper\\Media\\DottedLine"
+
+local buyTable
+
+local function SolidLine(parent, layer)
+    local t = parent:CreateTexture(nil, layer or "BORDER")
+    t:SetColorTexture(LINE[1], LINE[2], LINE[3], LINE[4])
+    return t
+end
+
+local function NewCell(parent, font)
+    local fs = parent:CreateFontString(nil, "OVERLAY", font)
+    fs:SetJustifyH("LEFT")
+    fs:SetJustifyV("MIDDLE")
+    fs:SetWordWrap(false)
+    return fs
+end
+
+local function CreateBuyTable()
+    local t = CreateFrame("Frame")
+    t.rows = {}
+
+    -- Header: a box with a light fill, a line between columns, clickable titles.
+    local header = CreateFrame("Frame", nil, t)
+    header:SetPoint("TOPLEFT")
+    header:SetPoint("TOPRIGHT")
+    header:SetHeight(HEADER_HEIGHT)
+    local bg = header:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(HEADER_BG[1], HEADER_BG[2], HEADER_BG[3], HEADER_BG[4])
+    for _, side in ipairs({ "TOP", "BOTTOM" }) do
+        local l = SolidLine(header)
+        l:SetHeight(1)
+        l:SetPoint(side .. "LEFT")
+        l:SetPoint(side .. "RIGHT")
+    end
+    for _, side in ipairs({ "LEFT", "RIGHT" }) do
+        local l = SolidLine(header)
+        l:SetWidth(1)
+        l:SetPoint("TOP" .. side)
+        l:SetPoint("BOTTOM" .. side)
+    end
+    header.cells = {}
+    for c = 1, #BUY_TITLES do
+        local b = CreateFrame("Button", nil, header)
+        b:SetHeight(HEADER_HEIGHT)
+        b.text = NewCell(b, "GameFontNormal")
+        b.text:SetPoint("LEFT", CELL_PAD, 0)
+        b.text:SetPoint("RIGHT", -CELL_PAD, 0)
+        b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        if c > 1 then
+            b.divider = SolidLine(b)
+            b.divider:SetWidth(1)
+            b.divider:SetPoint("TOPLEFT", 0, -3)
+            b.divider:SetPoint("BOTTOMLEFT", 0, 3)
+        end
+        b:SetScript("OnClick", function(self) if t.onSort then t.onSort(self.key) end end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText("Sort by " .. BUY_SORT_NAMES[self.key]:lower(), 1, 1, 1)
+            GameTooltip:AddLine("Click again to reverse the order.", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        header.cells[c] = b
+    end
+    t.header = header
+
+    -- Columns follow the table's width.
+    t:SetScript("OnSizeChanged", function(self, width)
+        local x = 0
+        for c, share in ipairs(BUY_WIDTHS) do
+            local w = width * share / 0.99
+            local hc = self.header.cells[c]
+            hc:ClearAllPoints()
+            hc:SetPoint("TOPLEFT", x, 0)
+            hc:SetWidth(w)
+            for _, row in ipairs(self.rows) do
+                local cell = row.cells[c]
+                cell:ClearAllPoints()
+                cell:SetPoint("LEFT", row, "LEFT", x + CELL_PAD, 0)
+                cell:SetWidth(math.max(1, w - 2 * CELL_PAD))
+            end
+            x = x + w
+        end
+    end)
+    return t
+end
+
+-- Row i, made when first needed.
+local function BuyTableRowFrame(t, i)
+    local row = t.rows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, t)
+    row:SetHeight(ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
+    row:SetPoint("TOPRIGHT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
+    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    local dots = row:CreateTexture(nil, "BORDER")
+    dots:SetTexture(DOTS, "REPEAT", "REPEAT")
+    dots:SetHorizTile(true)
+    dots:SetVertexColor(LINE[1], LINE[2], LINE[3], 0.6)
+    dots:SetHeight(1)
+    dots:SetPoint("BOTTOMLEFT")
+    dots:SetPoint("BOTTOMRIGHT")
+    row.cells = {}
+    for c = 1, #BUY_TITLES do row.cells[c] = NewCell(row, "GameFontHighlight") end
+    row:SetScript("OnEnter", function(self) if self.entry then ShowBuyTooltip({ frame = self }, self.entry) end end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self)
+        if self.entry and IsModifiedClick("CHATLINK") then
+            local _, link = C_Item.GetItemInfo(self.entry.writID)
             if link then InsertLink(link) end
         end
     end)
-    parent:AddChild(row)
+    t.rows[i] = row
+    return row
+end
+
+-- Adds the table to `parent` (an AceGUI container) with `rows` ({ e, cells }).
+local function AddBuyTable(parent, rows, sortKey, desc, onSort)
+    buyTable = buyTable or CreateBuyTable()
+    local t = buyTable
+    t.onSort = onSort
+    for c, title in ipairs(BUY_TITLES) do
+        local hc = t.header.cells[c]
+        hc.key = BUY_KEYS[c]
+        hc.text:SetText(title .. (hc.key == sortKey and SORT_ARROW[desc and true or false] or ""))
+    end
+    for i, r in ipairs(rows) do
+        local row = BuyTableRowFrame(t, i)
+        row.entry = r.e
+        for c = 1, #BUY_TITLES do row.cells[c]:SetText(r.cells[c]) end
+        row:Show()
+    end
+    for i = #rows + 1, #t.rows do
+        t.rows[i].entry = nil
+        t.rows[i]:Hide()
+    end
+
+    -- An AceGUI group of the table's height holds it; the table goes back to
+    -- UIParent (hidden) when the group is released.
+    local holder = AceGUI:Create("SimpleGroup")
+    holder:SetFullWidth(true)
+    holder.noAutoHeight = true
+    holder:SetHeight(HEADER_HEIGHT + #rows * ROW_HEIGHT + 2)
+    holder:SetCallback("OnRelease", function()
+        t:Hide()
+        t:ClearAllPoints()
+        t:SetParent(UIParent)
+    end)
+    parent:AddChild(holder)
+    t:SetParent(holder.frame)
+    t:ClearAllPoints()
+    t:SetAllPoints(holder.frame)
+    t:Show()
+    local w = holder.frame:GetWidth()
+    if w and w > 0 then t:GetScript("OnSizeChanged")(t, w) end
 end
 
 function UI:BuildBuy(container)
@@ -559,9 +764,9 @@ function UI:BuildBuy(container)
     end
     local function Refilter() GoToPage(1) end
 
-    -- Controls in four fixed rows, each sharing the window's width, so they keep their
+    -- Controls in three fixed rows, each sharing the window's width, so they keep their
     -- place at any window size:
-    --   sort, level / zone, NPC / the two checkboxes / page buttons
+    --   zone, NPC / the two checkboxes / page buttons
     local function Row()
         local row = AceGUI:Create("SimpleGroup")
         row:SetFullWidth(true)
@@ -570,25 +775,25 @@ function UI:BuildBuy(container)
         return row
     end
     local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
-    local rowSort, rowPlace, rowHide, rowPage = Row(), Row(), Row(), Row()
+    local rowPlace, rowHide, rowPage = Row(), Row(), Row()
 
-    local sort = AceGUI:Create("Dropdown")
-    sort:SetLabel("Sort by")
-    sort:SetRelativeWidth(HALF)
-    sort:SetList({ price = "Price (low to high)", rep = "Rep per gold" }, { "price", "rep" })
-    sort:SetValue(db.buySort)
-    sort:SetCallback("OnValueChanged", function(_, _, v) db.buySort = v; Refilter() end)
-    rowSort:AddChild(sort)
+    -- Sort: a column (also chosen by clicking its title) and a direction. buySortDesc
+    -- nil means the column's usual direction (BUY_DESC_FIRST).
+    if not BUY_SORT_NAMES[db.buySort] then db.buySort = "price" end
+    local function SortDesc()
+        if db.buySortDesc == nil then return BUY_DESC_FIRST[db.buySort] or false end
+        return db.buySortDesc
+    end
+    local function SortBy(key)
+        if key == db.buySort then
+            db.buySortDesc = not SortDesc()
+        else
+            db.buySort, db.buySortDesc = key, nil
+        end
+        Refilter()
+    end
 
-    local tier = AceGUI:Create("Dropdown")
-    tier:SetLabel("Level")
-    tier:SetRelativeWidth(HALF)
-    local tierList, tierOrder = { ALL = "All" }, { "ALL" }
-    for _, t in ipairs(ns.TIERS) do tierList[t] = ns.TIER_NAMES[t]; table.insert(tierOrder, t) end
-    tier:SetList(tierList, tierOrder)
-    tier:SetValue(db.buyTier)
-    tier:SetCallback("OnValueChanged", function(_, _, v) db.buyTier = v; Refilter() end)
-    rowSort:AddChild(tier)
+
 
     local function HideBox(label, key, tip)
         local cb = AceGUI:Create("CheckBox")
@@ -606,7 +811,7 @@ function UI:BuildBuy(container)
         rowHide:AddChild(cb)
     end
     HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
-    HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log, bags or bank.")
+    HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
 
     -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
     local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
@@ -644,15 +849,22 @@ function UI:BuildBuy(container)
     npc:SetCallback("OnValueChanged", function(_, _, v) db.buyNpc = v; Refilter() end)
     rowPlace:AddChild(npc)
 
+    -- Values for the columns Prices.GetBuyList doesn't know how to sort.
+    local function SortValue(e)
+        local w = ns.Writs[e.writID]
+        if db.buySort == "name" then return (ItemName(w.item, w.name) or ""):lower() end
+        if db.buySort == "level" then return ns.TIER_NAMES[w.tier] end
+        if db.buySort == "have" then return OwnedText(OwnedWrit(e.writID)) ~= "" and 1 or 0 end
+    end
+
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
-        if db.buyTier ~= "ALL" and ns.Writs[writID].tier ~= db.buyTier then return false end
         local k = keyOf[writID]
         if db.buyZone ~= "ALL" and k.zone ~= db.buyZone then return false end
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
         local s = CH.Tracker:GetState(writID)
-        if db.buyHideOwned and (s.inLog or (s.writsTotal or 0) > 0) then return false end
+        if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end
         return not (db.buyHideDone and s.status == STATUS.DONE)
-    end)
+    end, SortDesc(), SortValue)
 
     local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
     local page = math.min(math.max(self.buyPage or 1, 1), pages)
@@ -671,7 +883,13 @@ function UI:BuildBuy(container)
     nextB:SetRelativeWidth(0.2)
     nextB:SetDisabled(page >= pages)
 
-    local scroll = CreateScroll(container, "buy")
+    -- The list sits in a bordered box.
+    local box = AceGUI:Create("InlineGroup")
+    box:SetFullWidth(true)
+    box:SetFullHeight(true)
+    box:SetLayout("Fill")
+    container:AddChild(box)
+    local scroll = CreateScroll(box, "buy")
     if #list == 0 then
         AddLabel(scroll, "No writs with an Auction House price.\n\n" ..
             "Writs only show up here once your price addon has seen them for sale.", GameFontHighlight)
@@ -681,11 +899,14 @@ function UI:BuildBuy(container)
 
     AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the writ plus the items it asks for."),
         GameFontHighlightSmall)
+    local rows = {}
     local first = (page - 1) * BUY_PAGE_SIZE + 1
     for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
         local e = list[i]
-        AddBuyRow(scroll, e, not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE)
+        local done = not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE
+        table.insert(rows, { e = e, cells = BuyCells(e, done) })
     end
+    AddBuyTable(scroll, rows, db.buySort, SortDesc(), SortBy)
 end
 
 ---------------------------------------------------------------------------
@@ -782,6 +1003,37 @@ function UI:BuildSettings(container)
     AddCheckBox(scroll, "Show the minimap button",
         "Left-click opens this window, right-click plans a route. Also available in the addon compartment.",
         not db.minimap.hide, function(v) CH.Minimap:SetShown(v) end)
+
+    AddHeading(scroll, "Characters")
+    AddLabel(scroll, C(COLOR.dim, "Writs and writ items in your bank and on these characters are shown in tooltips, " ..
+        "the Shopping tab and Buy Writs. Log in on a character once to add it, and open its bank once to include " ..
+        "the bank. Only characters on your realm and faction count, since they can mail you what they hold."),
+        GameFontHighlightSmall)
+    for _, c in ipairs(CH.Alts:List()) do
+        local row = AceGUI:Create("SimpleGroup")
+        row:SetFullWidth(true)
+        row:SetLayout("Flow")
+        local label = AceGUI:Create("Label")
+        label:SetRelativeWidth(c.me and 0.98 or 0.78)
+        label:SetFontObject(GameFontHighlight)
+        local seen = c.me and C(COLOR.ready, "this character")
+            or (c.updated and GetServerTime and ("updated " .. Ago(GetServerTime() - c.updated)) or "")
+        label:SetText(string.format("%s - %s (%s)   %s   %s", CH.Alts.ColoredName(c, true), c.realm or "?",
+            c.faction or "?", C(COLOR.dim, string.format("%d writ%s", c.writs, c.writs == 1 and "" or "s")),
+            C(COLOR.dim, seen)))
+        row:AddChild(label)
+        if not c.me then
+            local forget = AceGUI:Create("Button")
+            forget:SetText("Forget")
+            forget:SetRelativeWidth(0.2)
+            forget:SetCallback("OnClick", function()
+                CH.Alts:Forget(c.key)
+                UI:Redraw()
+            end)
+            row:AddChild(forget)
+        end
+        scroll:AddChild(row)
+    end
 
     AddHeading(scroll, "Credits")
     local version = (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("CraftmansHelper", "Version")) or "?"
@@ -921,9 +1173,17 @@ function UI:BuildShopping(container)
         row:SetFontObject(GameFontHighlight)
         row:SetImage(ItemIcon(e.item))
         row:SetImageSize(18, 18)
-        row:SetText(string.format("  %s   %s   %s", ItemName(e.item, e.name),
+        -- Copies in the bank or on alts that could cover what's missing.
+        local spare = {}
+        local GetCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+        local bank = math.max(CH.Alts:InBank(e.item, "items"), (GetCount(e.item, true) or 0) - (GetCount(e.item) or 0))
+        if bank > 0 then table.insert(spare, bank .. " in bank") end
+        local alts = CH.Alts.Summary(CH.Alts:Holders(e.item, "items"))
+        if alts ~= "" then table.insert(spare, "on " .. alts) end
+        row:SetText(string.format("  %s   %s   %s%s", ItemName(e.item, e.name),
             C(COLOR.active, string.format("need %d more", missing)),
-            C(COLOR.dim, string.format("(have %d of %d)", e.have, e.need))))
+            C(COLOR.dim, string.format("(have %d of %d)", e.have, e.need)),
+            #spare > 0 and ("   " .. C(COLOR.ready, table.concat(spare, ", "))) or ""))
         row:SetCallback("OnEnter", function(widget)
             GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
             CH.Tooltips.suppress = true

@@ -38,6 +38,25 @@ local function Where(s)
     return (t.name and (t.name .. ", ") or "") .. where
 end
 
+-- "Bank x2, Thrallbank, Other x3": copies in this character's bank and on alts
+-- (same realm and faction), or nil when there are none.
+local function Elsewhere(id, kind)
+    local parts = {}
+    local bank = CH.Alts:InBank(id, kind)
+    if kind == "writs" then
+        local s = CH.Tracker:GetState(id)
+        bank = math.max(bank, (s.writsTotal or 0) - (s.writsInBags or 0))
+    else
+        local GetItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+        bank = math.max(bank, (GetItemCount(id, true) or 0) - (GetItemCount(id) or 0))
+    end
+    if bank > 0 then table.insert(parts, bank > 1 and ("Bank x" .. bank) or "Bank") end
+    local alts = CH.Alts.Summary(CH.Alts:Holders(id, kind), true)
+    if alts ~= "" then table.insert(parts, alts) end
+    if #parts == 0 then return nil end
+    return table.concat(parts, ", ")
+end
+
 local function AddWritInfo(tooltip, writID)
     local s = CH.Tracker:GetState(writID)
     local st = STATUS_TEXT[s.status]
@@ -48,6 +67,8 @@ local function AddWritInfo(tooltip, writID)
     tooltip:AddDoubleLine("Needs", string.format("%s  %d/%d", ItemName(s.writ.item, s.writ.name), math.min(s.have, s.need), s.need),
         1, 0.82, 0, haveColor[1], haveColor[2], haveColor[3])
     tooltip:AddDoubleLine("Deliver to", Where(s), 1, 0.82, 0, 1, 1, 1)
+    local elsewhere = Elsewhere(writID, "writs")
+    if elsewhere then tooltip:AddDoubleLine("Also have", elsewhere, 1, 0.82, 0, 1, 1, 1) end
 
     -- AH estimate (Auctionator or TSM); left out when there's no price.
     local est = ns.Prices.GetWritEstimate(writID, CH.db.profile.includeWritPrice)
@@ -69,9 +90,11 @@ local function AddWritInfo(tooltip, writID)
     end
 end
 
-local function AddCraftInfo(tooltip, writIDs)
+local function AddCraftInfo(tooltip, itemID, writIDs)
     tooltip:AddLine(" ")
     tooltip:AddLine("Craftman's Helper: wanted by a writ", HEADER_R, HEADER_G, HEADER_B)
+    local elsewhere = Elsewhere(itemID, "items")
+    if elsewhere then tooltip:AddDoubleLine("Also have", elsewhere, 1, 0.82, 0, 1, 1, 1) end
     -- Writs you're working on first.
     local list = {}
     for _, id in ipairs(writIDs) do table.insert(list, CH.Tracker:GetState(id)) end
@@ -95,7 +118,7 @@ local function OnItemTooltip(tooltip, data)
     if ns.Writs[id] then
         AddWritInfo(tooltip, id)
     elseif writsByItem[id] then
-        AddCraftInfo(tooltip, writsByItem[id])
+        AddCraftInfo(tooltip, id, writsByItem[id])
     end
 end
 

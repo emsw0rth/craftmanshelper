@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.8.0
+
+- **Alts and bank:** the addon now remembers which writs and writ items each of your characters has in their
+  bags and bank.
+  - **Buy Writs** shows where you already have a writ: your quest log, bags, bank, or an alt.
+  - **Writ and crafted item tooltips** get an "Also have" line listing copies in your bank and on your alts.
+  - The **Shopping** tab shows when a missing item is in your bank or on an alt.
+  - Alts count when they're on your realm and faction, since they can mail you what they hold. Characters show
+    by their full name, first name and surname.
+  - Log in on each character once to add it, and open its bank once to include the bank.
+  - **Settings → Characters** lists every remembered character, with a **Forget** button.
+- **Buy Writs is now a table:** Name, Level, Price, Rep/gold and Have.
+  - Click a column title to sort by it, and click again to reverse the order. The sort covers every page.
+  - Fixed rows and columns with borders, a boxed header, and dotted lines between rows.
+  - The Sort by and Level dropdowns are gone: sort with the column titles instead.
+  - **Hide writs I have** now hides only writs in your quest log or bags. Writs in your bank or on an alt stay
+    in the list, with where they are in the Have column.
+- Writ names no longer show "x1". The one writ that asks for more, Crafted Solid Shot, still shows "x200".
+
 ## 1.7.1
 
 - **Buy Writs:**
