@@ -37,6 +37,29 @@ def parse_transports(text):
     return docks
 
 
+# Who can use a link ("faction" in the output): zeppelins are Horde, skycutters and the
+# tram Alliance, and boats that call at an Alliance town are Alliance. Other boats
+# (Ratchet - Booty Bay, Tanaris - the Riverglades) are neutral.
+ALLIANCE_DOCKS = {
+    1424,  # Hillsbrad Foothills (Southshore)
+    1437,  # Wetlands (Menethil Harbor)
+    1438,  # Teldrassil (Rut'theran Village)
+    1439,  # Darkshore (Auberdine)
+    1444,  # Feralas (Feathermoon ferry)
+    1445,  # Dustwallow Marsh (Theramore)
+    1453,  # Stormwind City
+    1455,  # Ironforge
+}
+
+
+def link_faction(kind, src, dest):
+    if kind == "zeppelin":
+        return "H"
+    if kind in ("skycutter", "tram") or src in ALLIANCE_DOCKS or dest in ALLIANCE_DOCKS:
+        return "A"
+    return None
+
+
 def arrival(docks, src, x, y, kind, dest):
     # Never the dock you left from (the Feathermoon ferry has both ends on one map).
     candidates = [d for d in docks.get(dest, []) if d[2] == kind and (d[0], d[1]) != (x, y)]
@@ -61,7 +84,9 @@ def main():
             if not arr:
                 skipped.append(f"{kind} {src} ({x}, {y}) -> {dest}: no dock on the far side")
                 continue
-            links.append(f'    {{ kind = "{kind}", from = {{ map = {src}, x = {x}, y = {y} }}, '
+            faction = link_faction(kind, src, dest)
+            who = f'faction = "{faction}", ' if faction else ""
+            links.append(f'    {{ kind = "{kind}", {who}from = {{ map = {src}, x = {x}, y = {y} }}, '
                          f'to = {{ map = {dest}, x = {arr[0]}, y = {arr[1]} }} }},')
     (DATA / "Transports.lua").write_text(
         "-- Boats, zeppelins, skycutters, the Deeprun Tram and the Stormwind portal: one-way links\n"

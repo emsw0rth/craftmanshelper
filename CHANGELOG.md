@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.9.0
+
+- **Fixed:** routes no longer use the other faction's transport. Horde routes skip the Alliance boats (Menethil,
+  Auberdine, Theramore, Southshore, Rut'theran, Feathermoon, Stormwind), the Deeprun Tram and the Dalaran
+  skycutter. Alliance routes skip every zeppelin, including Grom'gol to Tirisfal. Ratchet to Booty Bay and Tanaris
+  to the Riverglades stay open to both.
+- **Reputation totals:**
+  - **My Writs** shows how much reputation the writs in your quest log and bags are worth, how much of it is
+    ready to turn in now, and what's in your bank.
+  - **Route** shows the route's reputation and, as you deliver, how much is still to go.
+  - Both say what it does for your standing, such as "Friendly 5,600 / 6,000 now: enough to reach Honored".
+  - Each writ counts once, since writs are daily. Amounts are base reputation, before bonuses.
+- **My Writs and All Writs are now tables**, like Buy Writs: click a column title to sort, click again to reverse.
+- **All Writs** is split into pages and has a Rep/gold column.
+
 ## 1.8.1
 
 - **Fixed:** lists jumped back to the top after a few moments while you scrolled and hovered writs. The window

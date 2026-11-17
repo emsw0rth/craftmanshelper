@@ -193,6 +193,25 @@ check("hearth: no Hearthstone in bags", H.GetOption(H) is None)
 lua.execute("count = 1; CH.db.profile.useHearth = false")
 check("hearth: setting off", H.GetOption(H) is None)
 
+# Faction links: a Horde player never boards an Alliance boat, and vice versa.
+lua.execute("""ns.Transports = {
+    { kind = 'boat', faction = 'A', from = { map = 1437, x = 5, y = 60 }, to = { map = 1438, x = 70, y = 55 } },
+    { kind = 'zeppelin', faction = 'H', from = { map = 1440, x = 50, y = 14 }, to = { map = 1441, x = 31, y = 29 } },
+    { kind = 'boat', from = { map = 1439, x = 63, y = 38 }, to = { map = 1437, x = 25, y = 73 } },
+}""")
+def link_kinds(opts):
+    gr = T.NewGraph(lua.eval(opts))
+    out = []
+    for i in range(1, len(gr.nodes) + 1):
+        for j in range(1, len(gr.nodes[i].links) + 1):
+            out.append((gr.nodes[i].links[j].kind, gr.nodes[i].map))
+    return sorted(out)
+check("Horde: no Alliance boat", link_kinds("{ speed = 7, faction = 'H' }") == [("boat", 1439), ("zeppelin", 1440)],
+      link_kinds("{ speed = 7, faction = 'H' }"))
+check("Alliance: no zeppelin", link_kinds("{ speed = 7, faction = 'A' }") == [("boat", 1437), ("boat", 1439)],
+      link_kinds("{ speed = 7, faction = 'A' }"))
+lua.execute("ns.Transports = {}")
+
 # Real data: every flight master and dock sits on a map with a known zone, sane coordinates.
 lua.execute("ns2 = {}; function _load2(src, name) local f = assert(loadstring(src, name)); f('CraftmansHelper', ns2) end")
 for f in ("Data/FlightMasters.lua", "Data/Transports.lua", "Data/FlightLengths.lua"):
@@ -205,6 +224,19 @@ bad = [i for i in range(1, len(tr) + 1)
        if tr[i].kind not in ("boat", "zeppelin", "tram", "skycutter", "portal")
        or not (0 <= tr[i]["from"].x <= 100 and 0 <= tr[i].to.y <= 100)]
 check("transport data sane", len(tr) >= 20 and not bad, bad)
+# Factions: zeppelins are Horde; Menethil, Auberdine, Theramore, Southshore and the tram are
+# Alliance; Ratchet - Booty Bay and Tanaris - Riverglades are for everyone.
+links = [tr[i] for i in range(1, len(tr) + 1)]
+fac = lambda m, kind=None: {l.faction for l in links if (l["from"].map == m or l.to.map == m) and (kind is None or l.kind == kind)}
+check("zeppelins are Horde", fac(1411) == {"H"} and fac(1420) == {"H"}, (fac(1411), fac(1420)))
+check("Grom'gol (STV) zeppelin is Horde", fac(1434, "zeppelin") == {"H"}, fac(1434, "zeppelin"))
+check("Menethil boats are Alliance", fac(1437) == {"A"}, fac(1437))
+check("Theramore and Southshore boats are Alliance", fac(1445) == {"A"} and fac(1424) == {"A"})
+check("Deeprun Tram is Alliance", fac(1455, "tram") == {"A"}, fac(1455, "tram"))
+check("Ratchet - Booty Bay is neutral", fac(1413) == {None}, fac(1413))
+check("Tanaris - Riverglades is neutral", fac(2548) == {None}, fac(2548))
+check("Zephras Isle: Horde zeppelin, Alliance skycutter",
+      fac(2521, "zeppelin") == {"H"} and fac(2521, "skycutter") == {"A"})
 fl = g.ns2.FlightLengths
 check("flight length data sane", len(list(fl.keys())) >= 300
       and all(k // 10000 > 0 and k % 10000 > 0 and 0 < v < 30000 for k, v in fl.items()))

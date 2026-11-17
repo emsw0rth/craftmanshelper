@@ -196,8 +196,282 @@ local function CreateScroll(container, key)
 end
 
 ---------------------------------------------------------------------------
+-- Tables (My Writs, All Writs, Buy Writs)
+---------------------------------------------------------------------------
+-- Plain frames, not AceGUI widgets: every row is the same height, every cell is one
+-- line (cut off with "..." when it doesn't fit; the tooltip has it all) and text is
+-- centred vertically. Each table (by id) makes its frames once and reuses them.
+--
+-- columns: { { key, title, width = share of the table's width (all just under 1),
+--              sortName = "name" for the header tooltip, descFirst = true to sort
+--              high-to-low on the first click } }
+-- rows:    { { cells = { text per column }, onEnter = fn(frame), onClick = fn(frame) } }
+
+local ROW_HEIGHT = 22
+local HEADER_HEIGHT = 24
+local CELL_PAD = 6
+local LINE = { 0.55, 0.45, 0.2, 0.9 }      -- gold-brown, like the window border
+local HEADER_BG = { 0.25, 0.2, 0.05, 0.5 }
+local DOTS = "Interface\\AddOns\\CraftmansHelper\\Media\\DottedLine"
+local HIGHLIGHT = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
+local SORT_ARROW = { [false] = " |TInterface\\Buttons\\Arrow-Up-Up:12:12:0:-2|t",
+                     [true] = " |TInterface\\Buttons\\Arrow-Down-Up:12:12:0:2|t" }
+
+local tables = {}
+
+local function SolidLine(parent, layer)
+    local t = parent:CreateTexture(nil, layer or "BORDER")
+    t:SetColorTexture(LINE[1], LINE[2], LINE[3], LINE[4])
+    return t
+end
+
+local function NewCell(parent, font)
+    local fs = parent:CreateFontString(nil, "OVERLAY", font)
+    fs:SetJustifyH("LEFT")
+    fs:SetJustifyV("MIDDLE")
+    fs:SetWordWrap(false)
+    return fs
+end
+
+local function LayoutTable(t, width)
+    local x = 0
+    for c, col in ipairs(t.columns) do
+        local w = width * col.width / 0.99
+        local hc = t.header.cells[c]
+        hc:ClearAllPoints()
+        hc:SetPoint("TOPLEFT", x, 0)
+        hc:SetWidth(w)
+        for _, row in ipairs(t.rows) do
+            local cell = row.cells[c]
+            cell:ClearAllPoints()
+            cell:SetPoint("LEFT", row, "LEFT", x + CELL_PAD, 0)
+            cell:SetWidth(math.max(1, w - 2 * CELL_PAD))
+        end
+        x = x + w
+    end
+end
+
+local function CreateTableFrame(columns)
+    local t = CreateFrame("Frame")
+    t.columns = columns
+    t.rows = {}
+
+    -- Header: a box with a light fill, a line between columns, clickable titles.
+    local header = CreateFrame("Frame", nil, t)
+    header:SetPoint("TOPLEFT")
+    header:SetPoint("TOPRIGHT")
+    header:SetHeight(HEADER_HEIGHT)
+    local bg = header:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(HEADER_BG[1], HEADER_BG[2], HEADER_BG[3], HEADER_BG[4])
+    for _, side in ipairs({ "TOP", "BOTTOM" }) do
+        local l = SolidLine(header)
+        l:SetHeight(1)
+        l:SetPoint(side .. "LEFT")
+        l:SetPoint(side .. "RIGHT")
+    end
+    for _, side in ipairs({ "LEFT", "RIGHT" }) do
+        local l = SolidLine(header)
+        l:SetWidth(1)
+        l:SetPoint("TOP" .. side)
+        l:SetPoint("BOTTOM" .. side)
+    end
+    header.cells = {}
+    for c, col in ipairs(columns) do
+        local b = CreateFrame("Button", nil, header)
+        b:SetHeight(HEADER_HEIGHT)
+        b.text = NewCell(b, "GameFontNormal")
+        b.text:SetPoint("LEFT", CELL_PAD, 0)
+        b.text:SetPoint("RIGHT", -CELL_PAD, 0)
+        b:SetHighlightTexture(HIGHLIGHT, "ADD")
+        if c > 1 then
+            local divider = SolidLine(b)
+            divider:SetWidth(1)
+            divider:SetPoint("TOPLEFT", 0, -3)
+            divider:SetPoint("BOTTOMLEFT", 0, 3)
+        end
+        b:SetScript("OnClick", function() if t.onSort then t.onSort(col.key) end end)
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText("Sort by " .. (col.sortName or col.title):lower(), 1, 1, 1)
+            GameTooltip:AddLine("Click again to reverse the order.", 0.6, 0.6, 0.6)
+            GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        header.cells[c] = b
+    end
+    t.header = header
+
+    -- Columns follow the table's width.
+    t:SetScript("OnSizeChanged", function(self, width) LayoutTable(self, width) end)
+    return t
+end
+
+-- Row i, made when first needed.
+local function TableRowFrame(t, i)
+    local row = t.rows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, t)
+    row:SetHeight(ROW_HEIGHT)
+    row:SetPoint("TOPLEFT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
+    row:SetPoint("TOPRIGHT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
+    row:SetHighlightTexture(HIGHLIGHT, "ADD")
+    local dots = row:CreateTexture(nil, "BORDER")
+    dots:SetTexture(DOTS, "REPEAT", "REPEAT")
+    dots:SetHorizTile(true)
+    dots:SetVertexColor(LINE[1], LINE[2], LINE[3], 0.6)
+    dots:SetHeight(1)
+    dots:SetPoint("BOTTOMLEFT")
+    dots:SetPoint("BOTTOMRIGHT")
+    row.cells = {}
+    for c = 1, #t.columns do row.cells[c] = NewCell(row, "GameFontHighlight") end
+    row:SetScript("OnEnter", function(self) if self.data and self.data.onEnter then self.data.onEnter(self) end end)
+    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    row:SetScript("OnClick", function(self) if self.data and self.data.onClick then self.data.onClick(self) end end)
+    t.rows[i] = row
+    return row
+end
+
+-- Adds table `id` to `parent` (an AceGUI container), sorted by sortKey (desc: reversed).
+local function AddTable(parent, id, columns, rows, sortKey, desc, onSort)
+    local t = tables[id]
+    if not t then
+        t = CreateTableFrame(columns)
+        tables[id] = t
+    end
+    t.onSort = onSort
+    for c, col in ipairs(columns) do
+        t.header.cells[c].text:SetText(col.title .. (col.key == sortKey and SORT_ARROW[desc and true or false] or ""))
+    end
+    for i, r in ipairs(rows) do
+        local row = TableRowFrame(t, i)
+        row.data = r
+        for c = 1, #columns do row.cells[c]:SetText(r.cells[c] or "") end
+        row:Show()
+    end
+    for i = #rows + 1, #t.rows do
+        t.rows[i].data = nil
+        t.rows[i]:Hide()
+    end
+
+    -- An AceGUI group of the table's height holds it; the table goes back to
+    -- UIParent (hidden) when the group is released.
+    local holder = AceGUI:Create("SimpleGroup")
+    holder:SetFullWidth(true)
+    holder.noAutoHeight = true
+    holder:SetHeight(HEADER_HEIGHT + #rows * ROW_HEIGHT + 2)
+    holder:SetCallback("OnRelease", function()
+        t:Hide()
+        t:ClearAllPoints()
+        t:SetParent(UIParent)
+    end)
+    parent:AddChild(holder)
+    t:SetParent(holder.frame)
+    t:ClearAllPoints()
+    t:SetAllPoints(holder.frame)
+    t:Show()
+    local w = holder.frame:GetWidth()
+    if w and w > 0 then LayoutTable(t, w) end
+end
+
+-- A table's sort, kept in the profile as db[prefix .. "Sort"] (a column key) and
+-- db[prefix .. "SortDesc"] (nil: the column's usual direction). Returns the key, whether
+-- it's reversed, and the function to call with a clicked column's key.
+local function TableSort(db, prefix, columns, default, refresh)
+    local byKey = {}
+    for _, col in ipairs(columns) do byKey[col.key] = col end
+    local sortField, descField = prefix .. "Sort", prefix .. "SortDesc"
+    if not byKey[db[sortField]] then db[sortField], db[descField] = default, nil end
+    local function Desc()
+        if db[descField] == nil then return byKey[db[sortField]].descFirst or false end
+        return db[descField]
+    end
+    local function SortBy(key)
+        if key == db[sortField] then
+            db[descField] = not Desc()
+        else
+            db[sortField], db[descField] = key, nil
+        end
+        refresh()
+    end
+    return db[sortField], Desc(), SortBy
+end
+
+-- Sorts rows by row.sort[key] (a number or lower-case string), reversed when desc;
+-- ties go by row.sort.tie.
+-- Rows without a value (nil) always go last.
+local function SortRows(rows, key, desc)
+    table.sort(rows, function(a, b)
+        local va, vb = a.sort[key], b.sort[key]
+        if (va == nil) ~= (vb == nil) then return va ~= nil end
+        if va ~= vb and va ~= nil then
+            if desc then return va > vb end
+            return va < vb
+        end
+        return (a.sort.tie or "") < (b.sort.tie or "")
+    end)
+end
+
+-- Row text helpers shared by My Writs and All Writs.
+local function WritName(s)
+    local name = ItemName(s.writ.item, s.writ.name)
+    if s.writ.count > 1 then name = name .. " " .. C(COLOR.ready, "x" .. s.writ.count) end
+    return name
+end
+
+local function ShortStatus(s)
+    if s.status == STATUS.READY then return C(COLOR.ready, "Ready to deliver") end
+    if s.status == STATUS.ACTIVE then return C(COLOR.active, "Need the item") end
+    if s.status == STATUS.INBAGS then return C(COLOR.inbags, "Not started") end
+    if s.status == STATUS.DONE then return C(COLOR.done, "Done today") end
+    return C(COLOR.available, "Available")
+end
+
+-- Zone sort value: continents in their usual order (Kalimdor first), then zone A-Z.
+local function ZoneSortValue(s)
+    local order = 99
+    for i, id in ipairs(ns.CONTINENT_ORDER) do if id == s.continentID then order = i end end
+    if not s.turnIn or s.zoneName == "Unknown" then order = 100 end
+    return string.format("%03d%s", order, (s.zoneName or ""):lower())
+end
+
+-- A writ row for My Writs and All Writs: hover for details, click for a waypoint,
+-- shift-click to link the item; zoneList (optional) is used for alt-click.
+local function WritRow(s, cells, zoneList)
+    return {
+        cells = cells,
+        onEnter = function(frame)
+            ShowTooltip({ frame = frame }, s)
+            if zoneList then
+                GameTooltip:AddLine("Alt-click for waypoints to every writ in " .. (s.zoneName or "this zone") .. ".",
+                    0.6, 0.6, 0.6)
+                GameTooltip:Show()
+            end
+        end,
+        onClick = function()
+            if IsModifiedClick("CHATLINK") then
+                local _, link = C_Item.GetItemInfo(s.writ.item)
+                if link then InsertLink(link) end
+            elseif zoneList and IsAltKeyDown() then
+                NavigateTo(zoneList)
+            else
+                NavigateTo({ s })
+            end
+        end,
+    }
+end
+
+---------------------------------------------------------------------------
 -- Tab: My Writs
 ---------------------------------------------------------------------------
+
+local MINE_COLUMNS = {
+    { key = "name", title = "Name", width = 0.28 },
+    { key = "status", title = "Status", width = 0.19 },
+    { key = "have", title = "Have", width = 0.09, sortName = "items you have" },
+    { key = "npc", title = "Turn-in", width = 0.23, sortName = "turn-in NPC" },
+    { key = "zone", title = "Zone", width = 0.20 },
+}
 
 function UI:BuildMine(container)
     local db = CH.db.profile
@@ -213,67 +487,101 @@ function UI:BuildMine(container)
     end)
     container:AddChild(toggle)
 
-    local scroll = CreateScroll(container, "mine")
+    local box = AceGUI:Create("InlineGroup")
+    box:SetFullWidth(true)
+    box:SetFullHeight(true)
+    box:SetLayout("Fill")
+    container:AddChild(box)
+    local scroll = CreateScroll(box, "mine")
 
-    -- continentID -> zoneName -> { states }
-    local groups, any = {}, false
+    local list, byZone = {}, {}
     for _, s in pairs(CH.Tracker:GetAllStates()) do
-        local include = s.inLog or (db.showUnstarted and s.status == STATUS.INBAGS)
-        if include then
-            any = true
-            local cont = groups[s.continentID] or {}
-            groups[s.continentID] = cont
-            local zone = cont[s.zoneName] or {}
-            cont[s.zoneName] = zone
-            table.insert(zone, s)
+        if s.inLog or (db.showUnstarted and s.status == STATUS.INBAGS) then
+            table.insert(list, s)
+            byZone[s.zoneName] = byZone[s.zoneName] or {}
+            table.insert(byZone[s.zoneName], s)
         end
     end
-
-    if not any then
+    if #list == 0 then
         AddLabel(scroll, "You have no Craftsman's Writs right now.\n\n" ..
             "Writs drop from creatures around the world (matching the zone's level) and can be " ..
             "bought on the Auction House. Each one can be completed once per day.", GameFontHighlight)
         return
     end
 
-    for _, contID in ipairs(ns.CONTINENT_ORDER) do
-        local cont = groups[contID]
-        if cont then
-            AddHeading(scroll, ns.ContinentName(contID))
-            local zones = {}
-            for zoneName in pairs(cont) do table.insert(zones, zoneName) end
-            table.sort(zones, SortName)
-            for _, zoneName in ipairs(zones) do
-                local list = cont[zoneName]
-                AddZoneHeader(scroll, zoneName, list)
-                table.sort(list, function(a, b)
-                    if a.status ~= b.status then return STATUS_ORDER[a.status] < STATUS_ORDER[b.status] end
-                    return SortName(a.writ.name, b.writ.name)
-                end)
-                for _, s in ipairs(list) do
-                    AddRow(scroll, s, s.turnIn and s.turnIn.name and ("-> " .. s.turnIn.name))
-                end
-            end
-        end
+    -- Reputation for turning them all in.
+    local held = ns.Rep.Held()
+    local repText = string.format("Turning in your %d writ%s: %s reputation", held.count, held.count == 1 and "" or "s",
+        C(COLOR.ready, ns.Rep.Number(held.rep)))
+    if ns.Rep.FactionName() then repText = repText .. " with " .. ns.Rep.FactionName() end
+    if held.ready.count > 0 and held.ready.count < held.count then
+        repText = repText .. string.format(" (%s from the %d ready now)", ns.Rep.Number(held.ready.rep), held.ready.count)
     end
-    -- Any continent not in CONTINENT_ORDER (shouldn't happen on Forever, but be safe).
-    for contID, cont in pairs(groups) do
-        if not tContains(ns.CONTINENT_ORDER, contID) then
-            AddHeading(scroll, ns.ContinentName(contID))
-            for _, list in pairs(cont) do
-                for _, s in ipairs(list) do AddRow(scroll, s, s.zoneName) end
-            end
-        end
+    repText = repText .. "."
+    if held.bank.count > 0 then
+        repText = repText .. C(COLOR.dim, string.format("  %d more in your bank: %s.", held.bank.count,
+            ns.Rep.Number(held.bank.rep)))
     end
+    AddLabel(scroll, repText, GameFontHighlight)
+    local outlook = ns.Rep.Outlook(held.rep)
+    AddLabel(scroll, C(COLOR.dim, (outlook and (outlook .. "  ") or "") .. "Base reputation, before any bonuses."),
+        GameFontHighlightSmall)
+    AddLabel(scroll, " ", GameFontHighlightSmall)
+
+    local sortKey, desc, sortBy = TableSort(db, "mine", MINE_COLUMNS, "zone", function() self:Redraw() end)
+    local rows = {}
+    for _, s in ipairs(list) do
+        local enough = s.have >= s.need
+        local npc = s.turnIn and s.turnIn.name
+        local cells = {
+            WritName(s),
+            ShortStatus(s),
+            C(enough and COLOR.ready or COLOR.active, string.format("%d/%d", math.min(s.have, s.need), s.need)),
+            npc or C(COLOR.dim, "unknown yet"),
+            s.zoneName ~= "Unknown" and s.zoneName or C(COLOR.dim, "unknown yet"),
+        }
+        local row = WritRow(s, cells, byZone[s.zoneName])
+        local name = (ItemName(s.writ.item, s.writ.name) or ""):lower()
+        row.sort = {
+            name = name,
+            status = STATUS_ORDER[s.status],
+            have = s.need > 0 and s.have / s.need or 0,
+            npc = npc and npc:lower() or "~",
+            zone = ZoneSortValue(s),
+            tie = STATUS_ORDER[s.status] .. name,
+        }
+        table.insert(rows, row)
+    end
+    SortRows(rows, sortKey, desc)
+    AddTable(scroll, "mine", MINE_COLUMNS, rows, sortKey, desc, sortBy)
 end
 
 ---------------------------------------------------------------------------
 -- Tab: All Writs
 ---------------------------------------------------------------------------
 
+local ALL_COLUMNS = {
+    { key = "name", title = "Name", width = 0.26 },
+    { key = "prof", title = "Profession", width = 0.15 },
+    { key = "level", title = "Level", width = 0.12 },
+    { key = "status", title = "Status", width = 0.15 },
+    { key = "rep", title = "Rep/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", width = 0.10,
+      sortName = "rep per gold", descFirst = true },
+    { key = "zone", title = "Turn-in zone", width = 0.21 },
+}
+local ALL_PAGE_SIZE = 20
+
 function UI:BuildAll(container)
     local db = CH.db.profile
     container:SetLayout("Flow")
+
+    -- Show another page, scrolled back to the top.
+    local function GoToPage(n)
+        self.allPage = n
+        self.scrollStatus.all = nil
+        self:Redraw()
+    end
+    local function Refilter() GoToPage(1) end
 
     local prof = AceGUI:Create("Dropdown")
     prof:SetLabel("Profession")
@@ -282,7 +590,7 @@ function UI:BuildAll(container)
     for _, p in ipairs(ns.PROFESSIONS) do profList[p] = ns.PROFESSION_NAMES[p]; table.insert(profOrder, p) end
     prof:SetList(profList, profOrder)
     prof:SetValue(db.professionFilter)
-    prof:SetCallback("OnValueChanged", function(_, _, v) db.professionFilter = v; self:Redraw() end)
+    prof:SetCallback("OnValueChanged", function(_, _, v) db.professionFilter = v; Refilter() end)
     container:AddChild(prof)
 
     local tier = AceGUI:Create("Dropdown")
@@ -292,43 +600,90 @@ function UI:BuildAll(container)
     for _, t in ipairs(ns.TIERS) do tierList[t] = ns.TIER_NAMES[t]; table.insert(tierOrder, t) end
     tier:SetList(tierList, tierOrder)
     tier:SetValue(db.tierFilter)
-    tier:SetCallback("OnValueChanged", function(_, _, v) db.tierFilter = v; self:Redraw() end)
+    tier:SetCallback("OnValueChanged", function(_, _, v) db.tierFilter = v; Refilter() end)
     container:AddChild(tier)
 
     local hide = AceGUI:Create("CheckBox")
     hide:SetLabel("Hide done today")
     hide:SetWidth(160)
     hide:SetValue(db.hideCompleted)
-    hide:SetCallback("OnValueChanged", function(_, _, v) db.hideCompleted = v; self:Redraw() end)
+    hide:SetCallback("OnValueChanged", function(_, _, v) db.hideCompleted = v; Refilter() end)
     container:AddChild(hide)
 
-    local scroll = CreateScroll(container, "all")
-    local states = CH.Tracker:GetAllStates()
-
-    for _, p in ipairs(ns.PROFESSIONS) do
-        if db.professionFilter == "ALL" or db.professionFilter == p then
-            local headingAdded = false
-            for _, t in ipairs(ns.TIERS) do
-                if db.tierFilter == "ALL" or db.tierFilter == t then
-                    local list = {}
-                    for _, s in pairs(states) do
-                        if s.writ.tier == t and tContains(s.writ.profs, p)
-                            and not (db.hideCompleted and s.status == STATUS.DONE) then
-                            table.insert(list, s)
-                        end
-                    end
-                    if #list > 0 then
-                        if not headingAdded then AddHeading(scroll, ns.PROFESSION_NAMES[p]); headingAdded = true end
-                        AddLabel(scroll, ns.TIER_NAMES[t], GameFontNormalLarge)
-                        table.sort(list, function(a, b) return SortName(a.writ.name, b.writ.name) end)
-                        for _, s in ipairs(list) do
-                            AddRow(scroll, s, s.zoneName ~= "Unknown" and s.zoneName or "turn-in unknown")
-                        end
-                    end
-                end
-            end
+    local sortKey, desc, sortBy = TableSort(db, "all", ALL_COLUMNS, "name", Refilter)
+    local rows = {}
+    for _, s in pairs(CH.Tracker:GetAllStates()) do
+        local w = s.writ
+        local profOK = db.professionFilter == "ALL" or tContains(w.profs, db.professionFilter)
+        local tierOK = db.tierFilter == "ALL" or w.tier == db.tierFilter
+        if profOK and tierOK and not (db.hideCompleted and s.status == STATUS.DONE) then
+            local profNames = {}
+            for _, p in ipairs(w.profs) do table.insert(profNames, ns.PROFESSION_NAMES[p] or p) end
+            table.sort(profNames)
+            local profText = table.concat(profNames, ", ")
+            local known = s.turnIn and s.zoneName ~= "Unknown"
+            -- Same estimate as the writ tooltip (with the writ's own price if that's turned on).
+            local est = ns.Prices.IsAvailable() and ns.Prices.GetWritEstimate(s.id, db.includeWritPrice)
+            local repPerGold = est and est.repPerGold
+            local row = WritRow(s, {
+                WritName(s),
+                profText,
+                C(COLOR.dim, ns.TIER_NAMES[w.tier]),
+                ShortStatus(s),
+                repPerGold and C(COLOR.ready, string.format("%.1f", repPerGold)) or C(COLOR.dim, "-"),
+                known and s.zoneName or C(COLOR.dim, "unknown yet"),
+            })
+            local name = (ItemName(w.item, w.name) or ""):lower()
+            row.sort = {
+                name = name,
+                prof = profText:lower(),
+                level = ns.TIER_NAMES[w.tier],
+                status = STATUS_ORDER[s.status],
+                rep = repPerGold,
+                zone = ZoneSortValue(s),
+                tie = name,
+            }
+            table.insert(rows, row)
         end
     end
+    SortRows(rows, sortKey, desc)
+
+    -- Page buttons.
+    local pages = math.max(1, math.ceil(#rows / ALL_PAGE_SIZE))
+    local page = math.min(math.max(self.allPage or 1, 1), pages)
+    self.allPage = page
+    local rowPage = AceGUI:Create("SimpleGroup")
+    rowPage:SetFullWidth(true)
+    rowPage:SetLayout("Flow")
+    container:AddChild(rowPage)
+    local prev = AddButton(rowPage, "< Prev", 80, function() GoToPage(page - 1) end)
+    prev:SetRelativeWidth(0.2)
+    prev:SetDisabled(page <= 1)
+    local info = AceGUI:Create("Label")
+    info:SetRelativeWidth(0.58)
+    info:SetJustifyH("CENTER")
+    info:SetFontObject(GameFontHighlight)
+    info:SetText(string.format("Page %d of %d  (%d writ%s)", page, pages, #rows, #rows == 1 and "" or "s"))
+    rowPage:AddChild(info)
+    local nextB = AddButton(rowPage, "Next >", 80, function() GoToPage(page + 1) end)
+    nextB:SetRelativeWidth(0.2)
+    nextB:SetDisabled(page >= pages)
+
+    local box = AceGUI:Create("InlineGroup")
+    box:SetFullWidth(true)
+    box:SetFullHeight(true)
+    box:SetLayout("Fill")
+    container:AddChild(box)
+    local scroll = CreateScroll(box, "all")
+    if #rows == 0 then
+        AddLabel(scroll, "No writs match these filters.", GameFontHighlight)
+        return
+    end
+    local pageRows = {}
+    for i = (page - 1) * ALL_PAGE_SIZE + 1, math.min(page * ALL_PAGE_SIZE, #rows) do
+        table.insert(pageRows, rows[i])
+    end
+    AddTable(scroll, "all", ALL_COLUMNS, pageRows, sortKey, desc, sortBy)
 end
 
 ---------------------------------------------------------------------------
@@ -395,6 +750,18 @@ function UI:BuildRoute(container)
 
     if #route.stops == 0 then
         AddLabel(scroll, "Nothing to deliver right now.", GameFontHighlight)
+    else
+        -- Reputation for the whole route, and what's left of it.
+        local r = ns.Rep.OfRoute(route)
+        local text = string.format("This route: %d writ%s, %s reputation", r.count, r.count == 1 and "" or "s",
+            C(COLOR.ready, ns.Rep.Number(r.rep)))
+        if r.left.count < r.count then
+            text = text .. string.format(". %d delivered, %s still to go", r.count - r.left.count,
+                C(COLOR.ready, ns.Rep.Number(r.left.rep)))
+        end
+        AddLabel(scroll, text .. ".", GameFontHighlight)
+        local outlook = ns.Rep.Outlook(r.left.rep)
+        if outlook then AddLabel(scroll, C(COLOR.dim, outlook), GameFontHighlightSmall) end
     end
 
     local current = Route:GetCurrent()
@@ -551,17 +918,15 @@ local function ShowBuyTooltip(widget, e)
     GameTooltip:Show()
 end
 
--- Buy Writs table. Each column has a fixed share of the width, so the table keeps
--- its shape whichever writs are on the page; long text wraps.
-local BUY_TITLES = { "Name", "Level", "Price", "Rep/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", "Have" }
-local BUY_KEYS = { "name", "level", "price", "rep", "have" } -- sort key of each column
-local BUY_SORT_NAMES = { name = "Name", level = "Level", price = "Price", rep = "Rep per gold", have = "Have" }
--- First click on a column: Rep per gold starts with the best, Have with the writs you have.
-local BUY_DESC_FIRST = { rep = true, have = true }
-local SORT_ARROW = { [false] = " |TInterface\\Buttons\\Arrow-Up-Up:12:12:0:-2|t",
-                     [true] = " |TInterface\\Buttons\\Arrow-Down-Up:12:12:0:2|t" }
--- Share of the width per column, just under 1 in total so rounding never wraps a cell.
-local BUY_WIDTHS = { 0.31, 0.14, 0.20, 0.11, 0.23 }
+-- Buy Writs table columns. Rep per gold starts with the best, Have with the writs you have.
+local BUY_COLUMNS = {
+    { key = "name", title = "Name", width = 0.31 },
+    { key = "level", title = "Level", width = 0.14 },
+    { key = "price", title = "Price", width = 0.20 },
+    { key = "rep", title = "Rep/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", width = 0.11,
+      sortName = "rep per gold", descFirst = true },
+    { key = "have", title = "Have", width = 0.23, descFirst = true },
+}
 
 -- The text of each cell in a writ's row.
 local function BuyCells(e, done)
@@ -579,174 +944,6 @@ local function BuyCells(e, done)
         repPerGold = C(COLOR.inbags, "no price")
     end
     return { name, C(COLOR.dim, ns.TIER_NAMES[w.tier]), price, repPerGold, OwnedText(OwnedWrit(e.writID)) }
-end
-
--- The table itself is plain frames, not AceGUI widgets: every row is the same height,
--- every cell is one line (cut off with "..." when it doesn't fit; the tooltip has it
--- all) and text is centred vertically. One table frame is made and reused.
-local ROW_HEIGHT = 22
-local HEADER_HEIGHT = 24
-local CELL_PAD = 6
-local LINE = { 0.55, 0.45, 0.2, 0.9 }      -- gold-brown, like the window border
-local HEADER_BG = { 0.25, 0.2, 0.05, 0.5 }
-local DOTS = "Interface\\AddOns\\CraftmansHelper\\Media\\DottedLine"
-
-local buyTable
-
-local function SolidLine(parent, layer)
-    local t = parent:CreateTexture(nil, layer or "BORDER")
-    t:SetColorTexture(LINE[1], LINE[2], LINE[3], LINE[4])
-    return t
-end
-
-local function NewCell(parent, font)
-    local fs = parent:CreateFontString(nil, "OVERLAY", font)
-    fs:SetJustifyH("LEFT")
-    fs:SetJustifyV("MIDDLE")
-    fs:SetWordWrap(false)
-    return fs
-end
-
-local function CreateBuyTable()
-    local t = CreateFrame("Frame")
-    t.rows = {}
-
-    -- Header: a box with a light fill, a line between columns, clickable titles.
-    local header = CreateFrame("Frame", nil, t)
-    header:SetPoint("TOPLEFT")
-    header:SetPoint("TOPRIGHT")
-    header:SetHeight(HEADER_HEIGHT)
-    local bg = header:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetColorTexture(HEADER_BG[1], HEADER_BG[2], HEADER_BG[3], HEADER_BG[4])
-    for _, side in ipairs({ "TOP", "BOTTOM" }) do
-        local l = SolidLine(header)
-        l:SetHeight(1)
-        l:SetPoint(side .. "LEFT")
-        l:SetPoint(side .. "RIGHT")
-    end
-    for _, side in ipairs({ "LEFT", "RIGHT" }) do
-        local l = SolidLine(header)
-        l:SetWidth(1)
-        l:SetPoint("TOP" .. side)
-        l:SetPoint("BOTTOM" .. side)
-    end
-    header.cells = {}
-    for c = 1, #BUY_TITLES do
-        local b = CreateFrame("Button", nil, header)
-        b:SetHeight(HEADER_HEIGHT)
-        b.text = NewCell(b, "GameFontNormal")
-        b.text:SetPoint("LEFT", CELL_PAD, 0)
-        b.text:SetPoint("RIGHT", -CELL_PAD, 0)
-        b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-        if c > 1 then
-            b.divider = SolidLine(b)
-            b.divider:SetWidth(1)
-            b.divider:SetPoint("TOPLEFT", 0, -3)
-            b.divider:SetPoint("BOTTOMLEFT", 0, 3)
-        end
-        b:SetScript("OnClick", function(self) if t.onSort then t.onSort(self.key) end end)
-        b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-            GameTooltip:SetText("Sort by " .. BUY_SORT_NAMES[self.key]:lower(), 1, 1, 1)
-            GameTooltip:AddLine("Click again to reverse the order.", 0.6, 0.6, 0.6)
-            GameTooltip:Show()
-        end)
-        b:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        header.cells[c] = b
-    end
-    t.header = header
-
-    -- Columns follow the table's width.
-    t:SetScript("OnSizeChanged", function(self, width)
-        local x = 0
-        for c, share in ipairs(BUY_WIDTHS) do
-            local w = width * share / 0.99
-            local hc = self.header.cells[c]
-            hc:ClearAllPoints()
-            hc:SetPoint("TOPLEFT", x, 0)
-            hc:SetWidth(w)
-            for _, row in ipairs(self.rows) do
-                local cell = row.cells[c]
-                cell:ClearAllPoints()
-                cell:SetPoint("LEFT", row, "LEFT", x + CELL_PAD, 0)
-                cell:SetWidth(math.max(1, w - 2 * CELL_PAD))
-            end
-            x = x + w
-        end
-    end)
-    return t
-end
-
--- Row i, made when first needed.
-local function BuyTableRowFrame(t, i)
-    local row = t.rows[i]
-    if row then return row end
-    row = CreateFrame("Button", nil, t)
-    row:SetHeight(ROW_HEIGHT)
-    row:SetPoint("TOPLEFT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
-    row:SetPoint("TOPRIGHT", 0, -(HEADER_HEIGHT + (i - 1) * ROW_HEIGHT))
-    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    local dots = row:CreateTexture(nil, "BORDER")
-    dots:SetTexture(DOTS, "REPEAT", "REPEAT")
-    dots:SetHorizTile(true)
-    dots:SetVertexColor(LINE[1], LINE[2], LINE[3], 0.6)
-    dots:SetHeight(1)
-    dots:SetPoint("BOTTOMLEFT")
-    dots:SetPoint("BOTTOMRIGHT")
-    row.cells = {}
-    for c = 1, #BUY_TITLES do row.cells[c] = NewCell(row, "GameFontHighlight") end
-    row:SetScript("OnEnter", function(self) if self.entry then ShowBuyTooltip({ frame = self }, self.entry) end end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    row:SetScript("OnClick", function(self)
-        if self.entry and IsModifiedClick("CHATLINK") then
-            local _, link = C_Item.GetItemInfo(self.entry.writID)
-            if link then InsertLink(link) end
-        end
-    end)
-    t.rows[i] = row
-    return row
-end
-
--- Adds the table to `parent` (an AceGUI container) with `rows` ({ e, cells }).
-local function AddBuyTable(parent, rows, sortKey, desc, onSort)
-    buyTable = buyTable or CreateBuyTable()
-    local t = buyTable
-    t.onSort = onSort
-    for c, title in ipairs(BUY_TITLES) do
-        local hc = t.header.cells[c]
-        hc.key = BUY_KEYS[c]
-        hc.text:SetText(title .. (hc.key == sortKey and SORT_ARROW[desc and true or false] or ""))
-    end
-    for i, r in ipairs(rows) do
-        local row = BuyTableRowFrame(t, i)
-        row.entry = r.e
-        for c = 1, #BUY_TITLES do row.cells[c]:SetText(r.cells[c]) end
-        row:Show()
-    end
-    for i = #rows + 1, #t.rows do
-        t.rows[i].entry = nil
-        t.rows[i]:Hide()
-    end
-
-    -- An AceGUI group of the table's height holds it; the table goes back to
-    -- UIParent (hidden) when the group is released.
-    local holder = AceGUI:Create("SimpleGroup")
-    holder:SetFullWidth(true)
-    holder.noAutoHeight = true
-    holder:SetHeight(HEADER_HEIGHT + #rows * ROW_HEIGHT + 2)
-    holder:SetCallback("OnRelease", function()
-        t:Hide()
-        t:ClearAllPoints()
-        t:SetParent(UIParent)
-    end)
-    parent:AddChild(holder)
-    t:SetParent(holder.frame)
-    t:ClearAllPoints()
-    t:SetAllPoints(holder.frame)
-    t:Show()
-    local w = holder.frame:GetWidth()
-    if w and w > 0 then t:GetScript("OnSizeChanged")(t, w) end
 end
 
 function UI:BuildBuy(container)
@@ -783,21 +980,8 @@ function UI:BuildBuy(container)
     local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
     local rowPlace, rowHide, rowPage = Row(), Row(), Row()
 
-    -- Sort: a column (also chosen by clicking its title) and a direction. buySortDesc
-    -- nil means the column's usual direction (BUY_DESC_FIRST).
-    if not BUY_SORT_NAMES[db.buySort] then db.buySort = "price" end
-    local function SortDesc()
-        if db.buySortDesc == nil then return BUY_DESC_FIRST[db.buySort] or false end
-        return db.buySortDesc
-    end
-    local function SortBy(key)
-        if key == db.buySort then
-            db.buySortDesc = not SortDesc()
-        else
-            db.buySort, db.buySortDesc = key, nil
-        end
-        Refilter()
-    end
+    -- Sort: the column chosen by clicking its title, and a direction.
+    local sortKey, sortDesc, sortBy = TableSort(db, "buy", BUY_COLUMNS, "price", Refilter)
 
 
 
@@ -870,7 +1054,7 @@ function UI:BuildBuy(container)
         local s = CH.Tracker:GetState(writID)
         if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end
         return not (db.buyHideDone and s.status == STATUS.DONE)
-    end, SortDesc(), SortValue)
+    end, sortDesc, SortValue)
 
     local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
     local page = math.min(math.max(self.buyPage or 1, 1), pages)
@@ -910,9 +1094,18 @@ function UI:BuildBuy(container)
     for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
         local e = list[i]
         local done = not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE
-        table.insert(rows, { e = e, cells = BuyCells(e, done) })
+        table.insert(rows, {
+            cells = BuyCells(e, done),
+            onEnter = function(frame) ShowBuyTooltip({ frame = frame }, e) end,
+            onClick = function()
+                if IsModifiedClick("CHATLINK") then
+                    local _, link = C_Item.GetItemInfo(e.writID)
+                    if link then InsertLink(link) end
+                end
+            end,
+        })
     end
-    AddBuyTable(scroll, rows, db.buySort, SortDesc(), SortBy)
+    AddTable(scroll, "buy", BUY_COLUMNS, rows, sortKey, sortDesc, sortBy)
 end
 
 ---------------------------------------------------------------------------

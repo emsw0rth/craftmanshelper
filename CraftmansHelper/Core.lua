@@ -34,6 +34,8 @@ local defaults = {
         hideCompleted = false,     -- "All Writs": hide writs already done today
         professionFilter = "ALL",
         tierFilter = "ALL",
+        mineSort = "zone",         -- "My Writs" table: sort column (mineSortDesc: reversed; nil = usual order)
+        allSort = "name",          -- "All Writs" table: sort column (allSortDesc likewise)
         minimap = { hide = false }, -- LibDBIcon position/visibility
         tooltips = true,           -- add writ info to item tooltips
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold

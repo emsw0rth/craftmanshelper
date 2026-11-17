@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.8.1)
+## Features (v1.9.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -15,6 +15,8 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
   - A small **route tracker** window shows the next 5 steps while a route is active.
   - `/writs why` prints the planner's travel times for the current leg.
   - An active route is planned again after a `/reload` or relog.
+  - Shows the route's reputation, and how much is still to go as you deliver.
+  - Uses only your faction's boats, zeppelins and tram.
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
   Auctionator or TradeSkillMaster (any TSM custom price string). Optionally includes the writ's own price.
@@ -30,10 +32,11 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
   at runtime when it's installed. `/writs export` shares what you've recorded.
 
-- **My Writs** tab: the writs in your quest log (and, optionally, unstarted writs in your bags), grouped by
-  continent (Kalimdor, then Eastern Kingdoms) and then by zone, sorted A–Z. Each row shows whether it is ready to
-  deliver, how many of the required item you have, and who to deliver it to.
-- **All Writs** tab: all 150 writs, filterable by profession and level, showing which are already done today.
+- **My Writs** tab: a table of the writs in your quest log (and, optionally, unstarted writs in your bags) with
+  status, how many of the required item you have, the turn-in NPC and zone. Click a column title to sort. Above it:
+  the reputation your writs are worth and what it does for your standing.
+- **All Writs** tab: all 150 writs in a table, 20 per page, with profession, level, status, rep per gold and turn-in
+  zone. Filter by profession and level, and hide writs done today.
 - Daily reset countdown in the window's status bar.
 - Records the turn-in NPC and position every time you deliver a writ (`/writs learned`). This fills in the
   Expert/Artisan locations that aren't documented yet.
