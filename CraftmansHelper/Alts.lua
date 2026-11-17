@@ -167,9 +167,31 @@ function Alts:Forget(key)
     self:SendMessage(ns.MSG_UPDATED)
 end
 
+-- Counts as one string, to spot changes.
+local function Signature(entry)
+    if not entry then return "" end
+    local parts = {}
+    for _, kind in ipairs({ "writs", "items" }) do
+        local ids = {}
+        for id in pairs(entry[kind] or {}) do table.insert(ids, id) end
+        table.sort(ids)
+        for _, id in ipairs(ids) do
+            local c = entry[kind][id]
+            table.insert(parts, kind .. id .. ":" .. (c.b or 0) .. "/" .. (c.k or 0))
+        end
+    end
+    return table.concat(parts, ",")
+end
+
+-- Saves this character's counts; announces it only when something changed (every
+-- announcement redraws the window).
 function Alts:Update()
     self:Snapshot()
-    self:SendMessage(ns.MSG_UPDATED)
+    local sig = Signature(Characters()[Alts.Me()])
+    if sig ~= self.lastSignature then
+        self.lastSignature = sig
+        self:SendMessage(ns.MSG_UPDATED)
+    end
 end
 
 function Alts:BANKFRAME_OPENED()

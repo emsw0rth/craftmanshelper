@@ -141,5 +141,15 @@ lua.execute("player = { name = 'Alt', surname = 'Realm', realm = 'Realm', factio
 check("a realm in the surname slot is ignored", A.Me()[0] == "Realm-Alt")
 lua.execute("player = { name = 'Main', surname = 'Stormhammer', realm = 'Realm', faction = 'Alliance', class = 'WARRIOR' }")
 
+# Update only announces a change when the counts changed (each announcement redraws the window).
+lua.execute("bags, bank = { [100] = 2 }, {}")
+before = g.sent
+A.Update(A)
+A.Update(A)
+check("update announces a change once", g.sent == before + 1, g.sent - before)
+lua.execute("bags = { [100] = 3 }")
+A.Update(A)
+check("update announces a new count", g.sent == before + 2, g.sent - before)
+
 print("All passed" if failures == 0 else f"{failures} failure(s)", f"({failures} failure(s))")
 raise SystemExit(1 if failures else 0)

@@ -6,6 +6,10 @@ _G.CraftmansHelper = CH -- handy for /dump while developing
 
 -- Message fired (via AceEvent) whenever writ state may have changed.
 ns.MSG_UPDATED = "CRAFTMANSHELPER_UPDATED"
+-- Message fired when item names the window showed as missing have loaded.
+ns.MSG_NAMES = "CRAFTMANSHELPER_NAMES"
+-- Item IDs the window wanted a name for before the game had it: [itemID] = true.
+ns.MissingNames = {}
 
 ns.PROFESSIONS = { "ALCHEMY", "BLACKSMITHING", "ENGINEERING", "LEATHERWORKING", "TAILORING" }
 ns.PROFESSION_NAMES = {

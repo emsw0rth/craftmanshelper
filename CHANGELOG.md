@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.8.1
+
+- **Fixed:** lists jumped back to the top after a few moments while you scrolled and hovered writs. The window
+  now keeps its scroll position when it updates, on every tab.
+- The window updates less often: only when a writ, item count or turn-in actually changes, not every time the
+  game reports quest log or bag activity, or loads an item you hovered.
+
 ## 1.8.0
 
 - **Alts and bank:** the addon now remembers which writs and writ items each of your characters has in their

@@ -223,7 +223,32 @@ function Tracker:Refresh()
         end
         self:BuildState(writID)
     end
-    self:SendMessage(ns.MSG_UPDATED)
+    -- QUEST_LOG_UPDATE and BAG_UPDATE_DELAYED fire often; only announce real changes,
+    -- since every announcement redraws the window.
+    local sig = self:Signature()
+    if sig ~= self.lastSignature then
+        self.lastSignature = sig
+        self:SendMessage(ns.MSG_UPDATED)
+    end
+end
+
+-- Everything about the writs the window shows, as one string, to spot changes.
+local sortedWrits
+function Tracker:Signature()
+    if not sortedWrits then
+        sortedWrits = {}
+        for writID in pairs(ns.Writs) do table.insert(sortedWrits, writID) end
+        table.sort(sortedWrits)
+    end
+    local parts = {}
+    for i, writID in ipairs(sortedWrits) do
+        local s = states[writID]
+        local t = s and s.turnIn
+        parts[i] = s and table.concat({ s.status, s.have, s.writsInBags, s.writsTotal, tostring(s.inLog),
+            t and tostring(t.map) or "", t and tostring(t.x) or "", t and tostring(t.y) or "", t and t.name or "" }, ",")
+            or ""
+    end
+    return table.concat(parts, ";")
 end
 
 function Tracker:GetState(writID)
@@ -293,15 +318,24 @@ function Tracker:QUEST_TURNED_IN(_, questID)
     self:ScheduleTimer("Refresh", 0.5) -- let the quest log and bags settle
 end
 
-function Tracker:OnItemDataLoaded()
-    self:SendMessage(ns.MSG_UPDATED) -- names/icons became available; redraw
+-- An item's data arrived. Hovering items loads their data too, so only redraw when
+-- the window was waiting for this name (and then once for a burst of them).
+function Tracker:OnItemDataLoaded(_, itemID)
+    if not (itemID and ns.MissingNames[itemID]) then return end
+    ns.MissingNames[itemID] = nil
+    if self.namesTimer then return end
+    self.namesTimer = self:ScheduleTimer(function()
+        self.namesTimer = nil
+        self:SendMessage(ns.MSG_NAMES)
+    end, 0.5)
 end
 
 function Tracker:OnEnable()
     self:PruneCompleted()
     self:RegisterBucketEvent({ "QUEST_LOG_UPDATE", "QUEST_ACCEPTED", "QUEST_REMOVED", "BAG_UPDATE_DELAYED" },
         0.3, "Refresh")
-    self:RegisterBucketEvent({ "GET_ITEM_INFO_RECEIVED", "ITEM_DATA_LOAD_RESULT" }, 0.5, "OnItemDataLoaded")
+    self:RegisterEvent("GET_ITEM_INFO_RECEIVED", "OnItemDataLoaded")
+    self:RegisterEvent("ITEM_DATA_LOAD_RESULT", "OnItemDataLoaded")
     self:RegisterEvent("QUEST_COMPLETE")
     self:RegisterEvent("QUEST_TURNED_IN")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Refresh")

@@ -19,6 +19,7 @@ local function C(color, text) return "|c" .. color .. text .. "|r" end
 
 local function ItemName(id, fallback)
     local name = C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(id)
+    if not name then ns.MissingNames[id] = true end -- redraw once it loads (Tracker.lua)
     return name or fallback
 end
 
@@ -183,8 +184,13 @@ local function CreateScroll(container, key)
     scroll:SetLayout("List")
     scroll:SetFullWidth(true)
     scroll:SetFullHeight(true)
-    UI.scrollStatus[key] = UI.scrollStatus[key] or {}
-    scroll:SetStatusTable(UI.scrollStatus[key])
+    local status = UI.scrollStatus[key] or {}
+    UI.scrollStatus[key] = status
+    -- AceGUI's scroll frame jumps back to the top while it's being filled (a short list
+    -- hides the scrollbar, which resets the position), so remember where it was and
+    -- put it back once the tab is built (RestoreScroll).
+    UI.pendingScroll = { widget = scroll, offset = status.offset, value = status.scrollvalue }
+    scroll:SetStatusTable(status)
     container:AddChild(scroll)
     return scroll
 end
@@ -1063,6 +1069,17 @@ function UI:UpdateStatusText()
         c.ready, c.active, c.done, ns.FormatDuration(CH.Tracker:SecondsUntilReset())))
 end
 
+-- Puts the tab's scroll position back after a rebuild (see CreateScroll).
+function UI:RestoreScroll()
+    local p = self.pendingScroll
+    self.pendingScroll = nil
+    if not (p and p.offset and p.offset ~= 0) then return end
+    local status = p.widget.status
+    if not status then return end
+    status.offset, status.scrollvalue = p.offset, p.value
+    p.widget:FixScroll()
+end
+
 function UI:Redraw()
     if not (self.frame and self.tabs) then return end
     self.tabs:SelectTab(self.currentTab or "mine")
@@ -1097,6 +1114,7 @@ function UI:Create()
     })
     tabs:SetCallback("OnGroupSelected", function(container, _, group)
         self.currentTab = group
+        self.pendingScroll = nil
         container:ReleaseChildren()
         if group == "all" then
             self:BuildAll(container)
@@ -1111,6 +1129,7 @@ function UI:Create()
         else
             self:BuildMine(container)
         end
+        self:RestoreScroll()
         self:UpdateStatusText()
     end)
     frame:AddChild(tabs)
@@ -1259,5 +1278,6 @@ function UI:OnEnable()
     self.scrollStatus = {}
     self.currentTab = "mine"
     self:RegisterMessage(ns.MSG_UPDATED, "Redraw")
+    self:RegisterMessage(ns.MSG_NAMES, "Redraw")
     self:RegisterMessage(ns.MSG_ROUTE, "Redraw")
 end
