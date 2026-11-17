@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.9.0)
+## Features (v1.10.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -23,18 +23,22 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 - **Buy Writs** tab: a table of the writs on the Auction House (name, level, price of writ + required items,
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
   and NPC, and hide writs you carry or have done today. Shows when Auctionator last did a full scan.
+  - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
-- **Settings** tab: item tooltips, price source, writ price in estimates, Hearthstone use, route tracker, minimap
-  button, and the list of remembered characters.
+- **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
+  reputation per rank, per character), Hearthstone use, route tracker, minimap button, and the list of remembered
+  characters.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
   at runtime when it's installed. `/writs export` shares what you've recorded.
 
 - **My Writs** tab: a table of the writs in your quest log (and, optionally, unstarted writs in your bags) with
-  status, how many of the required item you have, the turn-in NPC and zone. Click a column title to sort. Above it:
-  the reputation your writs are worth and what it does for your standing.
+  status, how many of the required item you have, rep per gold, the turn-in NPC and zone. Click a column title to
+  sort. Above it: the reputation your writs are worth and what it does for your standing.
+  - Below it, a folding section for each of your other characters (same realm and faction) with their writs, as of
+    when you last played them.
 - **All Writs** tab: all 150 writs in a table, 20 per page, with profession, level, status, rep per gold and turn-in
   zone. Filter by profession and level, and hide writs done today.
 - Daily reset countdown in the window's status bar.

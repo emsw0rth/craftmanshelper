@@ -36,6 +36,8 @@ local defaults = {
         tierFilter = "ALL",
         mineSort = "zone",         -- "My Writs" table: sort column (mineSortDesc: reversed; nil = usual order)
         allSort = "name",          -- "All Writs" table: sort column (allSortDesc likewise)
+        mineShowAlts = true,       -- "My Writs": sections for your other characters (same realm and faction)
+        mineAltsOpen = {},         -- "My Writs": [character key] = true for unfolded character sections
         minimap = { hide = false }, -- LibDBIcon position/visibility
         tooltips = true,           -- add writ info to item tooltips
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
@@ -47,6 +49,7 @@ local defaults = {
         buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log or bags (bank and alts are tagged)
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
+        buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
     },
@@ -57,6 +60,8 @@ local defaults = {
         flightPaths = {},
         -- Where the Hearthstone takes you: { name = bind location, map, x, y } (Hearth.lua).
         hearth = nil,
+        -- Rank of the Legacy perk Diplomat (0-5, +2% reputation each) on this character.
+        diplomat = 0,
     },
     global = {
         -- Turn-in locations recorded in-game: [questID] = { npcID, name, map, x, y }

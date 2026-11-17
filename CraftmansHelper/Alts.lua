@@ -4,7 +4,11 @@
 -- Saved account-wide in CH.db.global.characters["Realm-Name"]:
 --   { name, realm, faction, class, updated = server time,
 --     writs = { [writID] = { b = bags, k = bank } },
---     items = { [itemID] = { b = bags, k = bank } } }   -- items that writs ask for
+--     items = { [itemID] = { b = bags, k = bank } },   -- items that writs ask for
+--     log = { [writID] = true when ready to deliver, false when not },  -- writs in the quest log
+--     done = { [writID] = server time it expires (the daily reset) },   -- done today
+--     standing = { standing, value, max, nextName } or nil,  -- with the writ faction
+--     diplomat = Legacy perk rank }
 -- Only non-zero counts are stored. Alts count when they share your realm and
 -- faction, since only then can they mail you what they hold.
 local _, ns = ...
@@ -92,6 +96,20 @@ function Alts:Snapshot()
             end
         end
     end
+    -- Quest log, done today, standing and Diplomat: for My Writs' other-character sections.
+    local STATUS = ns.STATUS
+    entry.log, entry.done = {}, {}
+    for writID, st in pairs(CH.Tracker:GetAllStates()) do
+        if st.inLog then entry.log[writID] = st.status == STATUS.READY end
+    end
+    for questID, expires in pairs(CH.db.char.completed or {}) do
+        local writID = ns.WritByQuest[questID]
+        if writID then entry.done[writID] = expires end
+    end
+    local st = ns.Rep and ns.Rep.Standing()
+    entry.standing = st and { standing = st.standing, value = st.value, max = st.max, nextName = st.nextName }
+        or (old and old.standing)
+    entry.diplomat = ns.DiplomatRank()
     chars[key] = entry
 end
 
@@ -118,6 +136,69 @@ function Alts:InBank(id, kind)
     local me = Alts.Me()
     local c = Characters()[me]
     return c and c[kind] and c[kind][id] and (c[kind][id].k or 0) or 0
+end
+
+-- Your other characters on this realm and faction, as { { key, entry }, ... } by name.
+function Alts:Others()
+    local me, realm, faction = Alts.Me()
+    local list = {}
+    for key, c in pairs(Characters()) do
+        if key ~= me and c.realm == realm and (not faction or not c.faction or c.faction == faction) then
+            table.insert(list, { key = key, entry = c })
+        end
+    end
+    table.sort(list, function(a, b) return Alts.FullName(a.entry) < Alts.FullName(b.entry) end)
+    return list
+end
+
+-- The writs another character holds and can still turn in today, from its snapshot, as
+-- writ states like Tracker's (status, have, need, turnIn, zone...), plus bankOnly for
+-- writs only in its bank. unstarted: include writs in its bags and bank, not just its log.
+function Alts.WritStates(c, unstarted)
+    local STATUS = ns.STATUS
+    local now = GetServerTime and GetServerTime() or 0
+    local list = {}
+    local ids = {}
+    for writID in pairs(c.log or {}) do ids[writID] = true end
+    if unstarted then for writID in pairs(c.writs or {}) do ids[writID] = true end end
+    for writID in pairs(ids) do
+        local w = ns.Writs[writID]
+        local expires = c.done and c.done[writID]
+        local doneToday = expires and expires > now
+        local inLog = c.log and c.log[writID] ~= nil
+        if w and (inLog or not doneToday) then
+            local held = c.writs and c.writs[writID] or {}
+            local item = c.items and c.items[w.item] or {}
+            local s = { id = writID, writ = w, inLog = inLog, need = w.count,
+                        writsInBags = held.b or 0, writsTotal = (held.b or 0) + (held.k or 0),
+                        have = (item.b or 0) + (item.k or 0) }
+            if inLog then
+                s.status = c.log[writID] and STATUS.READY or STATUS.ACTIVE
+            else
+                s.status = STATUS.INBAGS
+                s.bankOnly = s.writsInBags == 0
+            end
+            s.turnIn = CH.Tracker:GetTurnIn(writID, false)
+            if s.turnIn and s.turnIn.map then
+                s.zoneID, s.zoneName, s.continentID = ns.ResolveZone(s.turnIn.map)
+            else
+                s.zoneID, s.zoneName, s.continentID = nil, "Unknown", ns.UNKNOWN_CONTINENT
+            end
+            table.insert(list, s)
+        end
+    end
+    return list
+end
+
+-- Reputation for a list of writ states of character c: { count, rep, ready = { count, rep } }.
+function Alts.Rep(c, states)
+    local out = { count = 0, rep = 0, ready = { count = 0, rep = 0 } }
+    for _, s in ipairs(states) do
+        local r = ns.WritRep(s.id, c.diplomat or 0) or 0
+        out.count, out.rep = out.count + 1, out.rep + r
+        if s.status == ns.STATUS.READY then out.ready.count, out.ready.rep = out.ready.count + 1, out.ready.rep + r end
+    end
+    return out
 end
 
 -- First name and surname ("Firstname Lastname"), or just the name without a surname.
@@ -180,6 +261,15 @@ local function Signature(entry)
             table.insert(parts, kind .. id .. ":" .. (c.b or 0) .. "/" .. (c.k or 0))
         end
     end
+    local log = {}
+    for id, ready in pairs(entry.log or {}) do table.insert(log, id .. (ready and "r" or "")) end
+    table.sort(log)
+    local done = {}
+    for id in pairs(entry.done or {}) do table.insert(done, id) end
+    table.sort(done)
+    local st = entry.standing
+    table.insert(parts, "log" .. table.concat(log, "/") .. "done" .. table.concat(done, "/") ..
+        "st" .. (st and (tostring(st.standing) .. st.value .. "/" .. st.max) or "") .. "d" .. tostring(entry.diplomat))
     return table.concat(parts, ",")
 end
 
@@ -203,4 +293,8 @@ function Alts:OnEnable()
     self:RegisterBucketEvent({ "BAG_UPDATE_DELAYED", "PLAYERBANKSLOTS_CHANGED" }, 1, "Update")
     self:RegisterEvent("BANKFRAME_OPENED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "Update")
+    -- Quest log and reputation changes come through the tracker's update. Update only
+    -- announces when something changed, so answering our own announcement stops there.
+    self:RegisterMessage(ns.MSG_UPDATED, "Update")
+    self:RegisterBucketEvent("UPDATE_FACTION", 2, "Update")
 end

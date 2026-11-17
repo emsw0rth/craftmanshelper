@@ -8,6 +8,26 @@ ns.Prices = Prices
 -- Base reputation per writ tier (QuestieDB quest reputationReward), before rep bonuses.
 ns.TIER_REP = { JOURNEYMAN = 75, EXPERT = 125, ARTISAN = 200 }
 
+-- The Legacy perk Diplomat: +2% reputation per rank, up to 5 ranks. Legacy points are spent
+-- per character, so the rank is a character setting (Settings tab).
+ns.DIPLOMAT_RANKS, ns.DIPLOMAT_STEP = 5, 0.02
+
+function ns.DiplomatRank()
+    local c = ns.CH and ns.CH.db and ns.CH.db.char
+    local rank = tonumber(c and c.diplomat) or 0
+    return math.max(0, math.min(math.floor(rank), ns.DIPLOMAT_RANKS))
+end
+
+-- Reputation for turning in a writ, with Diplomat (rounded down, as the game does), or nil.
+-- rank: a Diplomat rank (another character's); this character's when nil.
+function ns.WritRep(writID, rank)
+    local w = ns.Writs[writID]
+    local base = w and ns.TIER_REP[w.tier]
+    if not base then return nil end
+    rank = math.max(0, math.min(tonumber(rank) or ns.DiplomatRank(), ns.DIPLOMAT_RANKS))
+    return math.floor(base * (1 + ns.DIPLOMAT_STEP * rank) + 1e-6)
+end
+
 -- Prices older than this many days are flagged as stale.
 Prices.STALE_DAYS = 3
 
@@ -145,7 +165,7 @@ function Prices.GetWritEstimate(writID, includeWrit)
         end
     end
     est.cost = cost
-    est.rep = ns.TIER_REP[w.tier]
+    est.rep = ns.WritRep(writID)
     est.repPerGold = est.rep and est.rep / (cost / 10000)
     return est
 end
@@ -158,7 +178,7 @@ function Prices.GetWritBuyEstimate(writID)
     if not w then return nil end
     local writPrice, writAge = Prices.GetItemPrice(writID)
     if not writPrice then return nil end
-    local e = { writID = writID, writPrice = writPrice, rep = ns.TIER_REP[w.tier], age = writAge }
+    local e = { writID = writID, writPrice = writPrice, rep = ns.WritRep(writID), age = writAge }
     local unit, itemAge = Prices.GetItemPrice(w.item)
     if unit then
         e.itemCost = unit * (w.count or 1)

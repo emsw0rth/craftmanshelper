@@ -41,7 +41,7 @@ local function StatusText(s)
     elseif s.status == STATUS.ACTIVE then
         return C(COLOR.active, string.format("%d/%d", math.min(s.have, s.need), s.need))
     elseif s.status == STATUS.INBAGS then
-        return C(COLOR.inbags, "Not started (use the writ)")
+        return C(COLOR.inbags, s.bankOnly and "In the bank" or "Not started (use the writ)")
     elseif s.status == STATUS.DONE then
         return C(COLOR.done, "Done today")
     end
@@ -57,15 +57,21 @@ end
 -- Rows
 ---------------------------------------------------------------------------
 
-local function ShowTooltip(widget, s)
+-- showWrit: the tooltip is the writ's own (All Writs); otherwise the item it asks for.
+local function ShowTooltip(widget, s, showWrit)
     local w = s.writ
     GameTooltip:SetOwner(widget.frame, "ANCHOR_RIGHT")
     -- Our own rows already show the writ details; skip the item-tooltip hook here.
     CH.Tooltips.suppress = true
-    GameTooltip:SetItemByID(w.item)
+    GameTooltip:SetItemByID(showWrit and s.id or w.item)
     CH.Tooltips.suppress = false
     GameTooltip:AddLine(" ")
-    GameTooltip:AddDoubleLine("Writ", ItemName(s.id, "Craftsman's Writ: " .. w.name), 1, 0.82, 0, 1, 1, 1)
+    if showWrit then
+        GameTooltip:AddDoubleLine("Needs", ItemName(w.item, w.name) .. (w.count > 1 and (" x" .. w.count) or ""),
+            1, 0.82, 0, 1, 1, 1)
+    else
+        GameTooltip:AddDoubleLine("Writ", ItemName(s.id, "Craftsman's Writ: " .. w.name), 1, 0.82, 0, 1, 1, 1)
+    end
     GameTooltip:AddDoubleLine("Status", StatusText(s), 1, 0.82, 0, 1, 1, 1)
     GameTooltip:AddDoubleLine("Have / need", string.format("%d / %d", s.have, s.need), 1, 0.82, 0, 1, 1, 1)
     local t = s.turnIn
@@ -79,7 +85,8 @@ local function ShowTooltip(widget, s)
     if t and t.x then
         GameTooltip:AddLine("Click to set a waypoint to the turn-in.", 0.6, 0.6, 0.6)
     end
-    GameTooltip:AddLine("Shift-click to link the required item.", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine(showWrit and "Shift-click to link the writ." or "Shift-click to link the required item.",
+        0.6, 0.6, 0.6)
     GameTooltip:Show()
 end
 
@@ -422,7 +429,7 @@ end
 local function ShortStatus(s)
     if s.status == STATUS.READY then return C(COLOR.ready, "Ready to deliver") end
     if s.status == STATUS.ACTIVE then return C(COLOR.active, "Need the item") end
-    if s.status == STATUS.INBAGS then return C(COLOR.inbags, "Not started") end
+    if s.status == STATUS.INBAGS then return C(COLOR.inbags, s.bankOnly and "In bank" or "Not started") end
     if s.status == STATUS.DONE then return C(COLOR.done, "Done today") end
     return C(COLOR.available, "Available")
 end
@@ -437,11 +444,12 @@ end
 
 -- A writ row for My Writs and All Writs: hover for details, click for a waypoint,
 -- shift-click to link the item; zoneList (optional) is used for alt-click.
-local function WritRow(s, cells, zoneList)
+-- showWrit: hover shows the writ and shift-click links it, not the item it asks for.
+local function WritRow(s, cells, zoneList, showWrit)
     return {
         cells = cells,
         onEnter = function(frame)
-            ShowTooltip({ frame = frame }, s)
+            ShowTooltip({ frame = frame }, s, showWrit)
             if zoneList then
                 GameTooltip:AddLine("Alt-click for waypoints to every writ in " .. (s.zoneName or "this zone") .. ".",
                     0.6, 0.6, 0.6)
@@ -450,7 +458,7 @@ local function WritRow(s, cells, zoneList)
         end,
         onClick = function()
             if IsModifiedClick("CHATLINK") then
-                local _, link = C_Item.GetItemInfo(s.writ.item)
+                local _, link = C_Item.GetItemInfo(showWrit and s.id or s.writ.item)
                 if link then InsertLink(link) end
             elseif zoneList and IsAltKeyDown() then
                 NavigateTo(zoneList)
@@ -461,17 +469,81 @@ local function WritRow(s, cells, zoneList)
     }
 end
 
+-- What the reputation amounts include, e.g. "Includes Diplomat +6%."
+local function RepBonusNote()
+    local rank = ns.DiplomatRank()
+    if rank == 0 then return "Without Diplomat (set your rank in Settings)." end
+    return string.format("Includes Diplomat +%d%%.", math.floor(rank * ns.DIPLOMAT_STEP * 100 + 0.5))
+end
+
 ---------------------------------------------------------------------------
 -- Tab: My Writs
 ---------------------------------------------------------------------------
 
 local MINE_COLUMNS = {
-    { key = "name", title = "Name", width = 0.28 },
-    { key = "status", title = "Status", width = 0.19 },
-    { key = "have", title = "Have", width = 0.09, sortName = "items you have" },
-    { key = "npc", title = "Turn-in", width = 0.23, sortName = "turn-in NPC" },
-    { key = "zone", title = "Zone", width = 0.20 },
+    { key = "name", title = "Name", width = 0.26 },
+    { key = "status", title = "Status", width = 0.16 },
+    { key = "have", title = "Have", width = 0.08, sortName = "items you have" },
+    { key = "rep", title = "Rep/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", width = 0.10, sortName = "rep per gold", descFirst = true },
+    { key = "npc", title = "Turn-in", width = 0.20, sortName = "turn-in NPC" },
+    { key = "zone", title = "Zone", width = 0.19 },
 }
+
+-- Table rows for writ states (yours, or another character's from its snapshot).
+-- diplomat: that character's Diplomat rank for rep per gold (yours when nil).
+local function MineRows(list, diplomat)
+    local db = CH.db.profile
+    local priced = ns.Prices.IsAvailable()
+    local byZone = {}
+    for _, s in ipairs(list) do
+        byZone[s.zoneName] = byZone[s.zoneName] or {}
+        table.insert(byZone[s.zoneName], s)
+    end
+    local rows = {}
+    for _, s in ipairs(list) do
+        local enough = s.have >= s.need
+        local npc = s.turnIn and s.turnIn.name
+        local est = priced and ns.Prices.GetWritEstimate(s.id, db.includeWritPrice)
+        local repPerGold = est and est.cost > 0 and (ns.WritRep(s.id, diplomat) or 0) / (est.cost / 10000) or nil
+        local cells = {
+            WritName(s),
+            ShortStatus(s),
+            C(enough and COLOR.ready or COLOR.active, string.format("%d/%d", math.min(s.have, s.need), s.need)),
+            repPerGold and C(COLOR.ready, string.format("%.1f", repPerGold)) or C(COLOR.dim, "-"),
+            npc or C(COLOR.dim, "unknown yet"),
+            s.zoneName ~= "Unknown" and s.zoneName or C(COLOR.dim, "unknown yet"),
+        }
+        local row = WritRow(s, cells, byZone[s.zoneName], true)
+        local name = (ItemName(s.writ.item, s.writ.name) or ""):lower()
+        row.sort = {
+            name = name,
+            status = STATUS_ORDER[s.status],
+            have = s.need > 0 and s.have / s.need or 0,
+            rep = repPerGold,
+            npc = npc and npc:lower() or "~",
+            zone = ZoneSortValue(s),
+            tie = STATUS_ORDER[s.status] .. name,
+        }
+        table.insert(rows, row)
+    end
+    return rows
+end
+
+-- "3 hours ago", "yesterday", "4 days ago".
+local function Ago(t)
+    if not (t and GetServerTime) then return "a while ago" end
+    local d = GetServerTime() - t
+    if d < 3600 then return "less than an hour ago" end
+    if d < 86400 then
+        local h = math.floor(d / 3600)
+        return h .. " hour" .. (h == 1 and "" or "s") .. " ago"
+    end
+    local days = math.floor(d / 86400)
+    if days == 1 then return "yesterday" end
+    return days .. " days ago"
+end
+
+local FOLD_ICON = { [true] = "Interface\\Buttons\\UI-MinusButton-Up", [false] = "Interface\\Buttons\\UI-PlusButton-Up" }
 
 function UI:BuildMine(container)
     local db = CH.db.profile
@@ -487,6 +559,30 @@ function UI:BuildMine(container)
     end)
     container:AddChild(toggle)
 
+    -- Your other characters on this realm and faction that hold writs.
+    local allOthers = CH.Alts:Others()
+    if #allOthers > 0 then
+        local altToggle = AceGUI:Create("CheckBox")
+        altToggle:SetLabel("Show my other characters")
+        altToggle:SetWidth(240)
+        altToggle:SetValue(db.mineShowAlts)
+        altToggle:SetCallback("OnValueChanged", function(_, _, value)
+            db.mineShowAlts = value
+            self:Redraw()
+        end)
+        container:AddChild(altToggle)
+    end
+    local others = {}
+    if db.mineShowAlts then
+        for _, o in ipairs(allOthers) do
+            local states = CH.Alts.WritStates(o.entry, db.showUnstarted)
+            if #states > 0 then
+                o.states = states
+                table.insert(others, o)
+            end
+        end
+    end
+
     local box = AceGUI:Create("InlineGroup")
     box:SetFullWidth(true)
     box:SetFullHeight(true)
@@ -494,66 +590,101 @@ function UI:BuildMine(container)
     container:AddChild(box)
     local scroll = CreateScroll(box, "mine")
 
-    local list, byZone = {}, {}
+    local list = {}
     for _, s in pairs(CH.Tracker:GetAllStates()) do
         if s.inLog or (db.showUnstarted and s.status == STATUS.INBAGS) then
             table.insert(list, s)
-            byZone[s.zoneName] = byZone[s.zoneName] or {}
-            table.insert(byZone[s.zoneName], s)
         end
     end
+    -- One sort for every table on the tab.
+    local sortKey, desc, sortBy = TableSort(db, "mine", MINE_COLUMNS, "zone", function() self:Redraw() end)
+
+    if #others > 0 then
+        local _, _, _, first, surname = CH.Alts.Me()
+        local me = { name = first or UnitName("player"), surname = surname, class = select(2, UnitClass("player")) }
+        AddHeading(scroll, CH.Alts.ColoredName(me, true) .. " (you)")
+    end
+
     if #list == 0 then
         AddLabel(scroll, "You have no Craftsman's Writs right now.\n\n" ..
             "Writs drop from creatures around the world (matching the zone's level) and can be " ..
             "bought on the Auction House. Each one can be completed once per day.", GameFontHighlight)
-        return
+    else
+        -- Reputation for turning them all in.
+        local held = ns.Rep.Held()
+        local repText = string.format("Turning in your %d writ%s: %s reputation", held.count,
+            held.count == 1 and "" or "s", C(COLOR.ready, ns.Rep.Number(held.rep)))
+        if ns.Rep.FactionName() then repText = repText .. " with " .. ns.Rep.FactionName() end
+        if held.ready.count > 0 and held.ready.count < held.count then
+            repText = repText .. string.format(" (%s from the %d ready now)", ns.Rep.Number(held.ready.rep),
+                held.ready.count)
+        end
+        repText = repText .. "."
+        if held.bank.count > 0 then
+            repText = repText .. C(COLOR.dim, string.format("  %d more in your bank: %s.", held.bank.count,
+                ns.Rep.Number(held.bank.rep)))
+        end
+        AddLabel(scroll, repText, GameFontHighlight)
+        local outlook = ns.Rep.Outlook(held.rep)
+        AddLabel(scroll, C(COLOR.dim, (outlook and (outlook .. "  ") or "") .. RepBonusNote()),
+            GameFontHighlightSmall)
+        AddLabel(scroll, " ", GameFontHighlightSmall)
+
+        local rows = MineRows(list)
+        SortRows(rows, sortKey, desc)
+        AddTable(scroll, "mine", MINE_COLUMNS, rows, sortKey, desc, sortBy)
     end
 
-    -- Reputation for turning them all in.
-    local held = ns.Rep.Held()
-    local repText = string.format("Turning in your %d writ%s: %s reputation", held.count, held.count == 1 and "" or "s",
-        C(COLOR.ready, ns.Rep.Number(held.rep)))
-    if ns.Rep.FactionName() then repText = repText .. " with " .. ns.Rep.FactionName() end
-    if held.ready.count > 0 and held.ready.count < held.count then
-        repText = repText .. string.format(" (%s from the %d ready now)", ns.Rep.Number(held.ready.rep), held.ready.count)
-    end
-    repText = repText .. "."
-    if held.bank.count > 0 then
-        repText = repText .. C(COLOR.dim, string.format("  %d more in your bank: %s.", held.bank.count,
-            ns.Rep.Number(held.bank.rep)))
-    end
-    AddLabel(scroll, repText, GameFontHighlight)
-    local outlook = ns.Rep.Outlook(held.rep)
-    AddLabel(scroll, C(COLOR.dim, (outlook and (outlook .. "  ") or "") .. "Base reputation, before any bonuses."),
-        GameFontHighlightSmall)
+    if #others == 0 then return end
+
+    -- Other characters: a heading each (click to fold or unfold), then their table.
     AddLabel(scroll, " ", GameFontHighlightSmall)
+    AddHeading(scroll, "Your other characters")
+    db.mineAltsOpen = db.mineAltsOpen or {}
+    for _, o in ipairs(others) do
+        local c, states = o.entry, o.states
+        local open = db.mineAltsOpen[o.key] and true or false
+        local rep = CH.Alts.Rep(c, states)
+        local summary = string.format("%d writ%s, %s reputation", rep.count, rep.count == 1 and "" or "s",
+            ns.Rep.Number(rep.rep))
+        if rep.ready.count > 0 then summary = summary .. string.format(", %d ready", rep.ready.count) end
 
-    local sortKey, desc, sortBy = TableSort(db, "mine", MINE_COLUMNS, "zone", function() self:Redraw() end)
-    local rows = {}
-    for _, s in ipairs(list) do
-        local enough = s.have >= s.need
-        local npc = s.turnIn and s.turnIn.name
-        local cells = {
-            WritName(s),
-            ShortStatus(s),
-            C(enough and COLOR.ready or COLOR.active, string.format("%d/%d", math.min(s.have, s.need), s.need)),
-            npc or C(COLOR.dim, "unknown yet"),
-            s.zoneName ~= "Unknown" and s.zoneName or C(COLOR.dim, "unknown yet"),
-        }
-        local row = WritRow(s, cells, byZone[s.zoneName])
-        local name = (ItemName(s.writ.item, s.writ.name) or ""):lower()
-        row.sort = {
-            name = name,
-            status = STATUS_ORDER[s.status],
-            have = s.need > 0 and s.have / s.need or 0,
-            npc = npc and npc:lower() or "~",
-            zone = ZoneSortValue(s),
-            tie = STATUS_ORDER[s.status] .. name,
-        }
-        table.insert(rows, row)
+        local head = AceGUI:Create("InteractiveLabel")
+        head:SetFullWidth(true)
+        head:SetFontObject(GameFontHighlight)
+        head:SetImage(FOLD_ICON[open])
+        head:SetImageSize(16, 16)
+        head:SetHighlight(HIGHLIGHT)
+        head:SetText(" " .. CH.Alts.ColoredName(c, true) .. ": " .. summary ..
+            C(COLOR.dim, "   (seen " .. Ago(c.updated) .. ")"))
+        head:SetCallback("OnClick", function()
+            db.mineAltsOpen[o.key] = not open or nil
+            self:Redraw()
+        end)
+        head:SetCallback("OnEnter", function(widget)
+            GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText(CH.Alts.FullName(c), 1, 1, 1)
+            GameTooltip:AddLine((open and "Click to hide" or "Click to show") .. " this character's writs.",
+                0.6, 0.6, 0.6)
+            GameTooltip:AddLine("As of when you last played them (" .. Ago(c.updated) .. "). Log in on them " ..
+                "to bring it up to date.", 0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        head:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+        scroll:AddChild(head)
+
+        if open then
+            local rank = c.diplomat or 0
+            local note = rank > 0 and string.format("Includes Diplomat +%d%%.",
+                math.floor(rank * ns.DIPLOMAT_STEP * 100 + 0.5)) or "Without Diplomat."
+            local outlook = ns.Rep.Outlook(rep.rep, c.standing)
+            AddLabel(scroll, C(COLOR.dim, (outlook and (outlook .. "  ") or "") .. note), GameFontHighlightSmall)
+            local rows = MineRows(states, c.diplomat or 0)
+            SortRows(rows, sortKey, desc)
+            AddTable(scroll, "mine:" .. o.key, MINE_COLUMNS, rows, sortKey, desc, sortBy)
+            AddLabel(scroll, " ", GameFontHighlightSmall)
+        end
     end
-    SortRows(rows, sortKey, desc)
-    AddTable(scroll, "mine", MINE_COLUMNS, rows, sortKey, desc, sortBy)
 end
 
 ---------------------------------------------------------------------------
@@ -632,7 +763,7 @@ function UI:BuildAll(container)
                 ShortStatus(s),
                 repPerGold and C(COLOR.ready, string.format("%.1f", repPerGold)) or C(COLOR.dim, "-"),
                 known and s.zoneName or C(COLOR.dim, "unknown yet"),
-            })
+            }, nil, true)
             local name = (ItemName(w.item, w.name) or ""):lower()
             row.sort = {
                 name = name,
@@ -946,6 +1077,54 @@ local function BuyCells(e, done)
     return { name, C(COLOR.dim, ns.TIER_NAMES[w.tier]), price, repPerGold, OwnedText(OwnedWrit(e.writID)) }
 end
 
+-- The line above the Buy Writs table on reaching your next standing, as an InteractiveLabel:
+-- click it to show only the writs it picks (planSet), or all of them again.
+local function AddPlanLine(parent, plan, planSet, onToggle)
+    local db = CH.db.profile
+    local N = ns.Rep.Number
+    local after = plan.have > 0 and string.format(" after the %s from writs you have", N(plan.have)) or ""
+    local text
+    if plan.need <= 0 then
+        text = C(COLOR.ready, string.format("The writs you have already get you to %s (%s of the %s reputation needed).",
+            plan.nextName, N(plan.have), N(plan.toGo)))
+    elseif plan.writs then
+        text = string.format("%s is %s reputation away%s. Cheapest way there: %s for %s.", plan.nextName,
+            C(COLOR.ready, N(plan.need)), after,
+            C(COLOR.ready, string.format("%d writ%s", #plan.writs, #plan.writs == 1 and "" or "s")),
+            ns.FormatMoneyIcons(plan.cost))
+        text = text .. C(COLOR.dim, planSet and "  Click to show every writ again." or "  Click to show only these.")
+    else
+        text = string.format("%s is %s reputation away%s: more than all %d writs for sale give today.",
+            plan.nextName, C(COLOR.ready, N(plan.need)), after, plan.forSale)
+    end
+    local l = AceGUI:Create("InteractiveLabel")
+    l:SetFullWidth(true)
+    l:SetFontObject(GameFontHighlight)
+    l:SetText(text)
+    if plan.writs and plan.need > 0 then
+        l:SetHighlight(HIGHLIGHT)
+        l:SetCallback("OnClick", onToggle)
+        l:SetCallback("OnEnter", function(widget)
+            GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText("Cheapest way to " .. plan.nextName, 1, 1, 1)
+            for _, e in ipairs(plan.writs) do
+                local w = ns.Writs[e.writID]
+                GameTooltip:AddDoubleLine(ItemName(w.item, w.name) .. "  " .. C(COLOR.dim, ns.TIER_NAMES[w.tier]),
+                    ns.FormatMoneyIcons(e.cost), 1, 1, 1, 1, 1, 1)
+            end
+            GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(plan.cost), 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Reputation", N(plan.rep), 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Writs you have or have done today aren't counted again: each one can be " ..
+                "turned in once a day. Prices are the writ plus the items it asks for. " .. RepBonusNote(),
+                0.6, 0.6, 0.6, true)
+            GameTooltip:Show()
+        end)
+        l:SetCallback("OnLeave", function() GameTooltip:Hide() end)
+    end
+    parent:AddChild(l)
+end
+
 function UI:BuildBuy(container)
     local db = CH.db.profile
     container:SetLayout("Flow")
@@ -1047,7 +1226,16 @@ function UI:BuildBuy(container)
         if db.buySort == "have" then return OwnedText(OwnedWrit(e.writID)) ~= "" and 1 or 0 end
     end
 
+    -- The cheapest writs to the next standing; "show only these" overrides the other filters.
+    local plan = ns.Rep.NextStandingPlan()
+    local planSet
+    if db.buyPlanOnly and plan and plan.writs and #plan.writs > 0 and plan.need > 0 then
+        planSet = {}
+        for _, e in ipairs(plan.writs) do planSet[e.writID] = true end
+    end
+
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
+        if planSet then return planSet[writID] or false end
         local k = keyOf[writID]
         if db.buyZone ~= "ALL" and k.zone ~= db.buyZone then return false end
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
@@ -1087,6 +1275,12 @@ function UI:BuildBuy(container)
         return
     end
 
+    if plan then
+        AddPlanLine(scroll, plan, planSet, function()
+            db.buyPlanOnly = not planSet
+            Refilter()
+        end)
+    end
     AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the writ plus the items it asks for."),
         GameFontHighlightSmall)
     local rows = {}
@@ -1176,6 +1370,23 @@ function UI:BuildSettings(container)
         "for when you buy writs instead of looting them.",
         db.includeWritPrice, function(v) db.includeWritPrice = v end)
     writPrice:SetDisabled(not db.tooltips)
+
+    AddHeading(scroll, "Reputation")
+    local dip = AceGUI:Create("Dropdown")
+    dip:SetLabel("Diplomat rank (this character)")
+    dip:SetWidth(220)
+    local dipList, dipOrder = {}, {}
+    for r = 0, ns.DIPLOMAT_RANKS do
+        dipList[r] = r == 0 and "None" or string.format("Rank %d (+%d%%)", r, math.floor(r * ns.DIPLOMAT_STEP * 100 + 0.5))
+        table.insert(dipOrder, r)
+    end
+    dip:SetList(dipList, dipOrder)
+    dip:SetValue(ns.DiplomatRank())
+    dip:SetCallback("OnValueChanged", function(_, _, v) CH.db.char.diplomat = v; self:Redraw() end)
+    scroll:AddChild(dip)
+    AddLabel(scroll, C(COLOR.dim, "Diplomat is a Legacy perk (Resourcefulness): +2% reputation per rank. " ..
+        "Set the rank you've chosen on this character, and reputation and rep per gold include it."),
+        GameFontHighlightSmall)
 
     AddHeading(scroll, "Route planning")
     AddCheckBox(scroll, "Use your Hearthstone",

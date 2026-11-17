@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.10.0
+
+- **Cheapest way to your next standing:** Buy Writs picks the cheapest writs to buy to reach your next standing
+  today, for example "Honored is 1,475 reputation away. Cheapest way there: 4 writs for 23g 10s".
+  - Writs you already have (quest log, bags or bank) count toward it. Writs you've done today aren't suggested.
+  - Click the line to show only those writs, and click again to show every writ. Hover it for the list.
+- **Diplomat:** set your rank of the Legacy perk Diplomat (+2% reputation per rank) in **Settings → Reputation**.
+  It's saved per character, and every reputation amount and rep per gold includes it.
+- **Your other characters in My Writs:** below your own writs, a section for each of your characters on the same
+  realm and faction, with the writs in their quest log, bags and bank.
+  - Each heading shows their number of writs, the reputation they're worth and how many are ready. Click it to
+    unfold their table, which also shows their standing.
+  - It's as of when you last played them. Log in on each character once to fill it in.
+  - Turn it off with **Show my other characters**.
+- **My Writs** has a Rep/gold column.
+- Hovering a writ in **My Writs** or **All Writs** shows the writ's own tooltip, and shift-click links the writ.
+
 ## 1.9.0
 
 - **Fixed:** routes no longer use the other faction's transport. Horde routes skip the Alliance boats (Menethil,

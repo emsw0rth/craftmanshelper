@@ -19,8 +19,26 @@ sent = 0
 local Module = {}
 function Module:RegisterBucketEvent() end
 function Module:RegisterEvent() end
+function Module:RegisterMessage() end
 function Module:SendMessage() sent = sent + 1 end
-ns.CH = { db = { global = {} } }
+ns.CH = { db = { global = {}, char = { completed = {} } } }
+ns.STATUS = { READY = "ready", ACTIVE = "active", INBAGS = "inbags", AVAILABLE = "available", DONE = "done" }
+ns.WritByQuest = { [1000] = 100, [2000] = 200 }
+ns.TIER_REP = { JOURNEYMAN = 75, EXPERT = 125, ARTISAN = 200 }
+ns.Writs[100].tier, ns.Writs[200].tier = "JOURNEYMAN", "ARTISAN"
+ns.Writs[300] = { quest = 3000, item = 3, count = 1, tier = "EXPERT" }
+ns.WritByQuest[3000] = 300
+ns.UNKNOWN_CONTINENT = 0
+function ns.ResolveZone(map) return map, "Zone" .. map, 1 end
+function ns.DiplomatRank() return diplomat or 0 end
+function ns.WritRep(id, rank)
+    return math.floor(ns.TIER_REP[ns.Writs[id].tier] * (1 + 0.02 * (rank or ns.DiplomatRank())) + 1e-6)
+end
+logstates = {}
+ns.CH.Tracker = {
+    GetAllStates = function() return logstates end,
+    GetTurnIn = function(_, id) return { name = "NPC" .. id, map = 1400 + id } end,
+}
 function ns.CH:NewModule(name) local m = setmetatable({}, { __index = Module }); return m end
 
 player = { name = "Main", realm = "Realm", faction = "Alliance", class = "WARRIOR" }
@@ -150,6 +168,44 @@ check("update announces a change once", g.sent == before + 1, g.sent - before)
 lua.execute("bags = { [100] = 3 }")
 A.Update(A)
 check("update announces a new count", g.sent == before + 2, g.sent - before)
+
+# Quest log, done today, Diplomat: saved for My Writs' character sections.
+login("Logger", cls="PRIEST")
+lua.execute("""
+    bags = { [300] = 1, [3] = 1 }; bank = { [200] = 1 }
+    logstates = { [100] = { inLog = true, status = "ready" }, [300] = { inLog = false, status = "inbags" } }
+    ns.CH.db.char.completed = { [2000] = now + 500 }
+    diplomat = 5
+""")
+A.Snapshot(A)
+c = chars()["Realm-Logger"]
+check("quest log saved with ready state", c.log[100] is True and c.log[300] is None, (c.log[100], c.log[300]))
+check("done today saved by writ", c.done[200] == 1500, c.done[200])
+check("Diplomat rank saved", c.diplomat == 5)
+lua.execute("diplomat = 0")
+
+st = A.WritStates(c, True)
+by = {x.id: x for x in st.values()}
+check("alt states: log, bags; done-today bank writ left out", sorted(by) == [100, 300], sorted(by))
+check("alt state: ready from the log", by[100].status == "ready")
+check("alt state: unstarted writ in bags", by[300].status == "inbags" and not by[300].bankOnly)
+check("alt state: item counted from bags and bank", by[300].have == 1 and by[300].need == 1)
+check("alt state: turn-in and zone", by[300].turnIn.name == "NPC300" and by[300].zoneName == "Zone1700")
+check("alt states without unstarted: log only", [x.id for x in A.WritStates(c, False).values()] == [100])
+r = A.Rep(c, st)
+check("alt rep uses the alt's Diplomat", r.count == 2 and r.rep == 82 + 137 and r.ready.count == 1 and r.ready.rep == 82,
+      (r.count, r.rep, r.ready.rep))
+
+lua.execute("now = 2000")  # past the reset: the writ done yesterday counts again
+by = {x.id: x for x in A.WritStates(c, True).values()}
+check("after the reset: bank writ listed, marked bank only", 200 in by and by[200].bankOnly is True)
+
+# Others: this realm and faction, not you.
+login("Logger", cls="PRIEST")
+names = [o.entry.name for o in A.Others(A).values()]
+check("others: same realm and faction, not you", "Logger" not in names and "Main" in names, names)
+check("others: no other realm or faction", all(chars()[o.key].realm == "Realm" and chars()[o.key].faction == "Alliance"
+                                               for o in A.Others(A).values()))
 
 print("All passed" if failures == 0 else f"{failures} failure(s)", f"({failures} failure(s))")
 raise SystemExit(1 if failures else 0)
