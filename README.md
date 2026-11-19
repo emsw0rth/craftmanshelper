@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.10.0)
+## Features (v1.10.1)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -46,7 +46,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
-`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`.
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
 
 ## Install (development)
 

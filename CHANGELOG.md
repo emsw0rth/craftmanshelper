@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.1
+
+- **Fixed:** shift-clicking an item or writ in the addon now searches for it in Auctionator's Shopping tab, like
+  shift-clicking an item in your bags. This works in My Writs, All Writs, Buy Writs and the Shopping list.
+- **New command:** `/writs resetpos` moves the window back to the middle of the screen at its default size, and the
+  route tracker back to its default spot, for when one ends up off-screen.
+
 ## 1.10.0
 
 - **Cheapest way to your next standing:** Buy Writs picks the cheapest writs to buy to reach your next standing

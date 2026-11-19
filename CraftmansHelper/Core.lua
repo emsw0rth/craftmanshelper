@@ -94,6 +94,7 @@ local HELP = {
     "/writs buy - writs that are cheapest to buy on the Auction House",
     "/writs settings - open the settings",
     "/writs minimap - show / hide the minimap button",
+    "/writs resetpos - move the window and route tracker back to the middle of the screen",
     "/writs tooltips - turn writ info in item tooltips on / off",
     "/writs export - share the turn-in locations you've recorded",
     "/writs learned - list turn-in locations recorded in-game",
@@ -125,6 +126,10 @@ function CH:SlashCommand(input)
         self.UI:Show("buy")
     elseif cmd == "settings" or cmd == "options" or cmd == "config" then
         self.UI:Show("settings")
+    elseif cmd == "resetpos" or cmd == "reset" then
+        self.UI:ResetPosition()
+        self.RouteTracker:ResetPosition()
+        self:Print("Window and route tracker moved back to the middle of the screen.")
     elseif cmd == "minimap" then
         self.Minimap:Toggle()
     elseif cmd == "tooltips" then

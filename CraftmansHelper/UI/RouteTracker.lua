@@ -22,6 +22,12 @@ function Tracker:SavePosition()
     Settings().pos = { point, relPoint, x, y }
 end
 
+-- Back to its default spot, e.g. after it ended up off-screen.
+function Tracker:ResetPosition()
+    Settings().pos = nil
+    if self.frame then self:RestorePosition() end
+end
+
 function Tracker:RestorePosition()
     local f, pos = self.frame, Settings().pos
     f:ClearAllPoints()

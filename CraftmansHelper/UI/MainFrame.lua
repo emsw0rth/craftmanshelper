@@ -48,9 +48,12 @@ local function StatusText(s)
     return C(COLOR.available, "Available")
 end
 
+-- Inserts an item link the way a shift-click on a bag item does: into chat, the Auction
+-- House search, or Auctionator's Shopping search. The modern client's ChatFrameUtil.InsertLink
+-- comes first: Auctionator hooks that one when it exists, not the older ChatEdit_InsertLink.
 local function InsertLink(link)
-    if ChatEdit_InsertLink then return ChatEdit_InsertLink(link) end
     if ChatFrameUtil and ChatFrameUtil.InsertLink then return ChatFrameUtil.InsertLink(link) end
+    if ChatEdit_InsertLink then return ChatEdit_InsertLink(link) end
 end
 
 ---------------------------------------------------------------------------
@@ -1487,6 +1490,18 @@ end
 function UI:Redraw()
     if not (self.frame and self.tabs) then return end
     self.tabs:SelectTab(self.currentTab or "mine")
+end
+
+-- Forgets the window's saved position and size, and centres it (when it's lost off-screen).
+function UI:ResetPosition()
+    CH.db.profile.window = CH.db.profile.window or {}
+    local status = CH.db.profile.window
+    status.top, status.left, status.width, status.height = nil, nil, 560, 520
+    if self.frame then
+        self.frame:ApplyStatus() -- without a saved position, AceGUI centres the frame
+    else
+        self:Show(self.currentTab or "mine")
+    end
 end
 
 function UI:Create()
