@@ -3,6 +3,11 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
+**▶ [Watch the showcase video](https://youtu.be/eb8AAkmVXmM)** (November 2026, v1.10.2)
+
+Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
+[Wago](https://addons.wago.io/addons/craftmans-writ-helper)
+
 ## Features (v1.10.2)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
