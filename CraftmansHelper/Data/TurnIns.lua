@@ -77,7 +77,30 @@ ns.TurnIns = {
     -- Wetlands
     [8305] = { name = "Kixxle", map = 1437, x = 50.2, y = 37.7, faction = "AH" },
     -- Contributed: recorded in-game by players (/writs export)
+    [257429] = { name = "Furious Shadowforge Digger", map = 1418, x = 44.4, y = 11.4 }, -- turnin
+    [11019] = { name = "Jessir Moonbow", map = 1448, x = 51.3, y = 82.1 }, -- turnin
+    [12029] = { name = "Narianna", map = 1450, x = 53.3, y = 42.7 }, -- turnin
+    [262379] = { name = "Bullets Bigblast", map = 1435, x = 70.1, y = 41.7 }, -- turnin
+    [5634] = { name = "Rhapsody Shindigger", map = 1425, x = 26.9, y = 48.5 }, -- turnin
+    [8379] = { name = "Archmage Xylem", map = 1447, x = 29.5, y = 40.5 }, -- turnin
+    [7363] = { name = "Kum'isha the Collector", map = 1419, x = 51.9, y = 35.5 }, -- turnin
+    [257743] = { name = "Hastings", map = 1430, x = 47.0, y = 75.3 }, -- turnin
     [4503] = { name = "Mudcrush Durtfeet", map = 1445, x = 35.2, y = 38.2, faction = "AH" }, -- marker
     [10924] = { name = "Ivy Leafrunner", map = 1448, x = 50.9, y = 81.7 }, -- turnin
     [11706] = { name = "Adon", map = 1423, x = 50.9, y = 11.5, faction = "AH" }, -- marker
+
+    -- From Wowhead (quest turn-in NPC and NPC page), 2026-11-19
+    [262294] = { name = "Durganon", map = 1427, x = 41.0, y = 58.4 },
+    [270919] = { name = "Ugbert", map = 1445, x = 40.8, y = 28.0, faction = "AH" },
+    [10921] = { name = "Taronn Redfeather", map = 1448, x = 50.8, y = 81.6, faction = "AH" },
+    [12959] = { name = "Nergal", map = 1449, x = 43.2, y = 7.8, faction = "AH" },
+    [13656] = { name = "Willow", map = 1443, x = 62.0, y = 39.4, faction = "AH" },
+    [6546] = { name = "Tabetha", map = 1445, x = 46.0, y = 57.0, faction = "AH" },
+    [9116] = { name = "Eridan Bluewind", map = 1448, x = 51.2, y = 81.4, faction = "AH" },
+    [14470] = { name = "Impsy", map = 1448, x = 41.4, y = 44.8, faction = "AH" },
+    [11795] = { name = "Mylentha Riverbend", map = 1450, x = 51.8, y = 32.8, faction = "AH" },
+    [9273] = { name = "Petra Grossen", map = 1449, x = 43.2, y = 7.3, faction = "AH" },
+    [262041] = { name = "Bor'dorc", map = 1452, x = 64.8, y = 33.2, faction = "AH" },
+    [257750] = { name = "Calliard", map = 1430, x = 48.0, y = 68.2 },
+    [15194] = { name = "Hermit Ortell", map = 1451, x = 67.0, y = 69.6, faction = "AH" },
 }

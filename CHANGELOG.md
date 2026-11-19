@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.10.2
+
+- **27 more turn-in locations:** 107 of the 150 writs now have a known turn-in, up from 80.
+  - 10 recorded by players with `/writs export`, including Artisan turn-ins at Hastings (Deadwind Pass) and
+    Kum'isha the Collector (Blasted Lands). Thank you!
+  - 17 from Wowhead, among them Durganon (Searing Gorge), Taronn Redfeather and Eridan Bluewind (Felwood),
+    Mylentha Riverbend (Moonglade), Bor'dorc (Winterspring), Calliard (Deadwind Pass) and Hermit Ortell (Silithus).
+- These writs now get waypoints and a place in your route.
+
 ## 1.10.1
 
 - **Fixed:** shift-clicking an item or writ in the addon now searches for it in Auctionator's Shopping tab, like

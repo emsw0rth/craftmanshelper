@@ -3,7 +3,7 @@
 A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting orders that give reputation with
 **Azeroth Commerce Authority** (Alliance) / **Durotar Supply and Logistics** (Horde).
 
-## Features (v1.10.1)
+## Features (v1.10.2)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -154,6 +154,6 @@ Copyright (C) 2026 Emsworth. Released under the [GNU General Public License v3.0
 - Boat, zeppelin, skycutter and tram connections and measured flight route lengths were collected by
   **Glyalith** for [EllesmereUI](https://github.com/EllesmereGaming/EllesmereUI) Forever Essentials, and are used
   with their kind permission. Thank you!
-- The list of writs comes from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards).
+- The list of writs, and some Expert and Artisan turn-in NPCs, come from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards) and its quest and NPC pages.
 - Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`),
   [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) and LibDBIcon-1.0.
