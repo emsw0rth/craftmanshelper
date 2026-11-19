@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.10.3
+
+- **Fixed:** routes only ride into another zone where you really can. They go through the roads, passes, tunnels and
+  gates between zones, so a route no longer sends you to a flight master you can't reach on foot, such as Un'Goro's
+  from Thousand Needles. Each crossing is a step with the arrow on it, for example "Ride into Tanaris (Thousand
+  Needles 74.9, 93.3)".
+  - Capital gates only count for their own faction. The Searing Gorge gate only counts when you carry the Key to
+    Searing Gorge.
+- **Fixed:** while your faction isn't known yet, routes no longer use faction-only flight masters and transports.
+- **Coin pouch cashback:** the Coin Pouch each turn-in gives counts as money back in rep per gold, in the Buy Writs
+  tooltips and in the cheapest way to your next standing. A writ whose pouch pays more than it costs shows "profit".
+  - It starts from Wowhead's average for each pouch and learns from the pouches you open. `/writs pouches` shows
+    what you've seen so far.
+  - Turn it off with **Settings → Count the coin pouch as money back**.
+- **Recipe markers:** recipes at the trainer and in your profession window that craft an item a writ asks for get a
+  small icon. Hover it to see which writs. The trainer's recipe tooltips list them too. Turn it off with
+  **Settings → Mark recipes used by writs**.
+- **4 more turn-in locations** recorded by players, among them Spigot Operator Luglunket (Tanaris) and Gorzeeki
+  Wildeyes (Burning Steppes). 111 of the 150 writs now have a known turn-in. Thank you!
+- `/writs export` now also shares the coin pouches you've opened.
+
 ## 1.10.2
 
 - **27 more turn-in locations:** 107 of the 150 writs now have a known turn-in, up from 80.

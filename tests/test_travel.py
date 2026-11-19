@@ -210,6 +210,7 @@ check("Horde: no Alliance boat", link_kinds("{ speed = 7, faction = 'H' }") == [
       link_kinds("{ speed = 7, faction = 'H' }"))
 check("Alliance: no zeppelin", link_kinds("{ speed = 7, faction = 'A' }") == [("boat", 1437), ("boat", 1439)],
       link_kinds("{ speed = 7, faction = 'A' }"))
+check("faction unknown: only shared links", link_kinds("{ speed = 7 }") == [("boat", 1439)], link_kinds("{ speed = 7 }"))
 lua.execute("ns.Transports = {}")
 
 # Real data: every flight master and dock sits on a map with a known zone, sane coordinates.
@@ -237,9 +238,152 @@ check("Ratchet - Booty Bay is neutral", fac(1413) == {None}, fac(1413))
 check("Tanaris - Riverglades is neutral", fac(2548) == {None}, fac(2548))
 check("Zephras Isle: Horde zeppelin, Alliance skycutter",
       fac(2521, "zeppelin") == {"H"} and fac(2521, "skycutter") == {"A"})
+check("Auberdine and Rut'theran boats are Alliance", fac(1439) == {"A"} and fac(1438) == {"A"},
+      (fac(1439), fac(1438)))
+check("Stormwind boat is Alliance", fac(1453, "boat") == {"A"}, fac(1453, "boat"))
+
+
+# The real links each faction may use (Travel.FactionOK is what NewGraph filters with).
+def usable(faction):
+    return [(l.kind, l["from"].map, l.to.map) for l in links if T.FactionOK(faction, l.faction)]
+
+
+ALLIANCE_ONLY = {1437, 1438, 1439, 1453, 1455, 1424, 1445, 1444}  # Menethil, Darnassus, Auberdine, SW, IF...
+horde = usable("H")
+check("Horde network: no tram, no skycutter", not any(k in ("tram", "skycutter") for k, _, _ in horde),
+      sorted({k for k, _, _ in horde}))
+check("Horde network: no Alliance docks", not any(a in ALLIANCE_ONLY or b in ALLIANCE_ONLY for _, a, b in horde),
+      [x for x in horde if x[1] in ALLIANCE_ONLY or x[2] in ALLIANCE_ONLY])
+check("Horde network: zeppelins and shared boats",
+      {k for k, _, _ in horde} == {"zeppelin", "boat"} and ("boat", 1413, 1434) in horde and ("boat", 1446, 2548) in horde,
+      sorted(set(horde)))
+alliance = usable("A")
+check("Alliance network: no zeppelin", not any(k == "zeppelin" for k, _, _ in alliance))
+check("Alliance network: tram and shared boats",
+      ("tram", 1453, 1455) in alliance and ("boat", 1413, 1434) in alliance and ("boat", 1446, 2548) in alliance,
+      sorted(set(alliance)))
+unknown = usable(None)
+check("unknown faction: shared boats only", sorted({k for k, _, _ in unknown}) == ["boat"]
+      and all(a not in ALLIANCE_ONLY and b not in ALLIANCE_ONLY for _, a, b in unknown), unknown)
+
 fl = g.ns2.FlightLengths
 check("flight length data sane", len(list(fl.keys())) >= 300
       and all(k // 10000 > 0 and k % 10000 > 0 and 0 < v < 30000 for k, v in fl.items()))
+
+# Crossings between zones. Fake world: Darkshore 1439 - Ashenvale 1440 - Thousand Needles 1441
+# on one continent; crossings at x = 0 / 100 on each side of a border.
+lua.execute("""ns.Transports, ns.FlightMasters = {}, {}
+ns.Crossings = {
+    [1439] = { { to = 1440, x = 99, y = 50 } },
+    [1440] = { { to = 1439, x = 1, y = 50 }, { to = 1441, x = 99, y = 50, note = "the pass" } },
+    [1441] = { { to = 1440, x = 1, y = 50 } },
+}""")
+
+
+def graph_with(opts="{ speed = 7 }"):
+    return T.NewGraph(lua.eval(opts))
+
+
+def crossings(gr):
+    return [gr.nodes[i] for i in range(1, len(gr.nodes) + 1) if gr.nodes[i].kind == "crossing"]
+
+
+graph = graph_with()
+cs = crossings(graph)
+check("crossings are nodes in both zones", len(cs) == 4 and all(len(list(c.zones.keys())) == 2 for c in cs))
+a, b = T.AddNode(graph, g.P(1441, 50, 50)), T.AddNode(graph, g.P(1439, 50, 50))
+s1 = T.Search(graph, a)
+steps = T.Steps(s1, b)
+check("rides through the crossings between", kinds(steps) == ["cross", "cross", "walk"], kinds(steps))
+check("crossing directions", [T.Describe(steps[1]), T.Describe(steps[2])] ==
+      ["Ride into Zone1440 (Zone1441 1.0, 50.0)", "Ride into Zone1439 (Zone1440 1.0, 50.0)"],
+      [T.Describe(steps[1]), T.Describe(steps[2])])
+check("crossing note in the directions",
+      T.Describe(lua.eval("function(c, f) return { kind = 'cross', from = f, to = c } end")(
+          [c for c in crossings(graph) if c.note][0], a)) == "Ride into Zone1440, the pass (Zone1440 99.0, 50.0)")
+check("no straight ride across a zone you're not in", not T.CanRide(graph, a, b))
+inside = T.AddNode(graph, g.P(1441, 10, 10))
+check("ride within a zone", T.CanRide(graph, a, inside))
+x441 = [c for c in cs if c.map == 1441][0]
+check("crossing counts as both zones", T.CanRide(graph, x441, a) and T.CanRide(graph, x441, T.AddNode(graph, g.P(1440, 5, 5))))
+x = [c for c in cs if c.map == 1440 and c.x == 99][0]
+check("crossing leads into the zone you're not in", T.CrossInto(a, x) == 1440 and T.CrossInto(inside, x) == 1440)
+y_ = T.AddNode(graph, g.P(1440, 50, 50))
+check("from the other side it leads back", T.CrossInto(y_, x) == 1441)
+
+# A zone listed without crossings can't be ridden into.
+lua.execute("ns.Crossings[1441] = {}; ns.Crossings[1440][2] = nil")
+graph = graph_with()
+a, b = T.AddNode(graph, g.P(1441, 50, 50)), T.AddNode(graph, g.P(1440, 50, 50))
+check("zone without crossings: travel fallback", kinds(T.Steps(T.Search(graph, a), b)) == ["travel"])
+
+# Keys and capitals.
+lua.execute("""ns.Crossings = {
+    [1440] = { { to = 1441, x = 99, y = 50, item = 5396 }, { to = 1439, x = 1, y = 50, faction = "A" } },
+    [1441] = {}, [1439] = {},
+}""")
+check("gate without the key: shut", len(crossings(graph_with("{ speed = 7, faction = 'A', hasItem = function() return false end }"))) == 1)
+check("gate with the key: open", len(crossings(graph_with("{ speed = 7, faction = 'A', hasItem = function(id) return id == 5396 end }"))) == 2)
+lua.execute("C_Item = { GetItemCount = function(id) return id == 5396 and 1 or 0 end }")
+check("key found in the bags", T.HasItem(5396) and not T.HasItem(1) and len(crossings(graph_with("{ speed = 7, faction = 'A' }"))) == 2)
+lua.execute("C_Item = nil")
+check("capital gate: not for the other faction", len(crossings(graph_with("{ speed = 7, faction = 'H' }"))) == 0)
+check("capital gate: not with the faction unknown", len(crossings(graph_with("{ speed = 7 }"))) == 0)
+
+# Zones missing from the data: ridden into as before (same landmass).
+lua.execute("ns.Crossings = { [1439] = {} }")
+graph = graph_with()
+a, b = T.AddNode(graph, g.P(1441, 50, 50)), T.AddNode(graph, g.P(1440, 50, 50))
+check("zones without data: free riding", kinds(T.Steps(T.Search(graph, a), b)) == ["walk"])
+lua.execute("ns.Crossings = nil")
+
+# The real crossing data.
+lua.execute("_cr = {}")
+lua.eval("function(src) local f = assert(loadstring(src)); f('CraftmansHelper', _cr) end")(
+    (ADDON / "Data" / "Crossings.lua").read_text(encoding="utf-8"))
+CR = g._cr.Crossings
+zones = {z: [CR[z][i] for i in range(1, len(CR[z]) + 1)] for z in CR.keys()}
+
+
+def targets(c):
+    return list(c.to.values()) if lua.eval("type")(c.to) == "table" else [c.to]
+
+
+check("crossings: coordinates on the map", all(0 <= c.x <= 100 and 0 <= c.y <= 100 for l in zones.values() for c in l))
+check("crossings: lead to listed zones", all(t in zones for l in zones.values() for c in l for t in targets(c)),
+      [(z, t) for z, l in zones.items() for c in l for t in targets(c) if t not in zones])
+# Every zone that has crossings is reachable on foot from the rest of its continent (ignoring keys and
+# factions), apart from the island of Teldrassil.
+links = {(z, t) for z, l in zones.items() for c in l if not c.item for t in targets(c)}
+
+
+def reach(start):
+    seen, todo = {start}, [start]
+    while todo:
+        z = todo.pop()
+        for u, v in links:
+            for p, q in ((u, v), (v, u)):
+                if p == z and q not in seen:
+                    seen.add(q); todo.append(q)
+    return seen
+
+
+KALIMDOR = {1411, 1412, 1413, 1439, 1440, 1441, 1442, 1443, 1444, 1445, 1446, 1447, 1448, 1449, 1450, 1451,
+            1452, 1454, 1456}
+EK = {1416, 1417, 1418, 1419, 1420, 1421, 1422, 1423, 1424, 1425, 1426, 1427, 1428, 1429, 1430, 1431, 1432,
+      1433, 1434, 1435, 1436, 1437, 1453, 1455, 1458, 2548}
+check("crossings: Kalimdor connected", reach(1413) == KALIMDOR, KALIMDOR ^ reach(1413))
+check("crossings: Eastern Kingdoms connected", reach(1429) == EK, EK ^ reach(1429))
+check("crossings: Teldrassil and Darnassus", reach(1438) == {1438, 1457})
+tn = {t for c in zones[1441] for t in targets(c)}
+check("Thousand Needles leads to Tanaris, Feralas and The Barrens, not Un'Goro", tn == {1446, 1444, 1413}, tn)
+check("Searing Gorge gate needs its key",
+      sorted((z, c.item) for z, l in zones.items() for c in l if c.item) == [(1427, 5396), (1432, 5396)])
+CAPITALS = {1453: "A", 1455: "A", 1457: "A", 1454: "H", 1456: "H", 1458: "H"}
+check("capital crossings carry their faction",
+      all(c.faction == CAPITALS[z] for z in CAPITALS for c in zones[z])
+      and all(c.faction == CAPITALS[t] for z, l in zones.items() for c in l for t in targets(c) if t in CAPITALS),
+      [(z, c.x, c.faction) for z, l in zones.items() for c in l for t in targets(c) if t in CAPITALS and c.faction != CAPITALS[t]])
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

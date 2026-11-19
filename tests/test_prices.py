@@ -20,6 +20,7 @@ ns.Writs = {
 prices = { [1] = 14239, [2] = 2500 }
 ages = { [1] = 0, [2] = 5 }
 calls = {}
+ns.CH = { db = { profile = { cashback = false }, global = {} } }
 AuctionatorStub = { API = { v1 = {
     GetAuctionPriceByItemID = function(caller, id) table.insert(calls, caller); return prices[id] end,
     GetAuctionAgeByItemID = function(caller, id) return ages[id] end,
@@ -166,6 +167,50 @@ lua.execute("AUCTIONATOR_SAVEDVARS = { TimeOfLastBrowseScan = 1700000500, TimeOf
 check("latest of several scan kinds", P.LastFullScan() == 1700000900)
 lua.execute("Auctionator = nil")
 check("no last scan when TSM is the source", P.LastFullScan() is None)
+
+# Coin pouch cashback
+lua.execute("""Auctionator = AuctionatorStub; TSM_API = nil
+prices = { [1] = 14239, [2] = 2500, [100] = 1000, [200] = 1000 }
+ns.CH = { db = { profile = { priceSource = "AUTO" }, global = {} } }""")
+check("cashback on by default", P.CashbackOn())
+st = P.PouchStats("JOURNEYMAN")
+check("pouch stats before any opened: Wowhead average", st.average == 3490 and st.opened == 0 and st.min is None
+      and st.itemID == 284584, (st.average, st.opened))
+e = P.GetWritEstimate(100)
+check("estimate: cashback and net", e.cost == 14239 and e.cashback == 3490 and e.net == 14239 - 3490,
+      (e.cost, e.cashback, e.net))
+check("estimate: rep per gold from net", abs(e.repPerGold - 75 / 1.0749) < 1e-9, e.repPerGold)
+e = P.GetWritEstimate(200)
+check("pouch worth more than the items: profit", e.net == 10000 - 15179 and e.repPerGold == float("inf")
+      and g.ns.FormatRepPerGold(e.repPerGold) == "profit", (e.net, e.repPerGold))
+check("format rep per gold", g.ns.FormatRepPerGold(12.345) == "12.3")
+b = P.GetWritBuyEstimate(100)
+check("buy estimate: net after pouch", b.cost == 15239 and b.cashback == 3490 and b.net == 11749
+      and abs(b.repPerGold - 75 / 1.1749) < 1e-9, (b.cost, b.net, b.repPerGold))
+lst = P.GetBuyList("rep", None, True)
+check("buy list by rep per gold puts profit first", lst[1].writID == 200 and lst[2].writID == 100,
+      [x.writID for x in lst.values()])
+
+for _ in range(10):
+    check_ok = P.RecordPouch(284584, 5490)
+check("record pouch", check_ok)
+st = P.PouchStats("JOURNEYMAN")
+check("opened pouches pull the average", st.average == 4490 and st.opened == 10 and st.min == 5490 and st.max == 5490,
+      (st.average, st.opened))
+check("cashback follows the average", P.Cashback(100) == 4490, P.Cashback(100))
+P.RecordPouch(284584, 2000)
+st = P.PouchStats("JOURNEYMAN")
+check("min and max", st.min == 2000 and st.max == 5490 and st.opened == 11, (st.min, st.max))
+check("not a pouch: not recorded", not P.RecordPouch(12345, 100))
+check("no gold: not recorded", not P.RecordPouch(284585, 0))
+check("outlier: not recorded", not P.RecordPouch(284585, 7507 * 21) and P.PouchStats("EXPERT").opened == 0)
+check("pouch log is account-wide", g.ns.CH.db["global"].pouches[284584].n == 11)
+
+lua.execute("ns.CH.db.profile.cashback = false")
+e = P.GetWritEstimate(100)
+check("cashback off: net is the cost", not P.CashbackOn() and e.cashback == 0 and e.net == e.cost
+      and abs(e.repPerGold - 75 / 1.4239) < 1e-9, (e.cashback, e.net))
+check("cashback off: pouch stats still known", P.PouchStats("JOURNEYMAN").opened == 11)
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

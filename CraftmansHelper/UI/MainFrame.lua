@@ -507,12 +507,12 @@ local function MineRows(list, diplomat)
         local enough = s.have >= s.need
         local npc = s.turnIn and s.turnIn.name
         local est = priced and ns.Prices.GetWritEstimate(s.id, db.includeWritPrice)
-        local repPerGold = est and est.cost > 0 and (ns.WritRep(s.id, diplomat) or 0) / (est.cost / 10000) or nil
+        local repPerGold = est and ns.Prices.RepPerGold(ns.WritRep(s.id, diplomat) or 0, est.net)
         local cells = {
             WritName(s),
             ShortStatus(s),
             C(enough and COLOR.ready or COLOR.active, string.format("%d/%d", math.min(s.have, s.need), s.need)),
-            repPerGold and C(COLOR.ready, string.format("%.1f", repPerGold)) or C(COLOR.dim, "-"),
+            repPerGold and C(COLOR.ready, ns.FormatRepPerGold(repPerGold)) or C(COLOR.dim, "-"),
             npc or C(COLOR.dim, "unknown yet"),
             s.zoneName ~= "Unknown" and s.zoneName or C(COLOR.dim, "unknown yet"),
         }
@@ -764,7 +764,7 @@ function UI:BuildAll(container)
                 profText,
                 C(COLOR.dim, ns.TIER_NAMES[w.tier]),
                 ShortStatus(s),
-                repPerGold and C(COLOR.ready, string.format("%.1f", repPerGold)) or C(COLOR.dim, "-"),
+                repPerGold and C(COLOR.ready, ns.FormatRepPerGold(repPerGold)) or C(COLOR.dim, "-"),
                 known and s.zoneName or C(COLOR.dim, "unknown yet"),
             }, nil, true)
             local name = (ItemName(w.item, w.name) or ""):lower()
@@ -1030,7 +1030,12 @@ local function ShowBuyTooltip(widget, e)
         1, 0.82, 0, 1, 1, 1)
     if e.cost then
         GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(e.cost), 1, 0.82, 0, 1, 1, 1)
-        GameTooltip:AddDoubleLine("Rep per gold", string.format("%.1f (%d rep)", e.repPerGold, e.rep),
+        if e.cashback > 0 then
+            GameTooltip:AddDoubleLine("Coin pouch back", "-" .. ns.FormatMoneyIcons(e.cashback), 1, 0.82, 0, 1, 1, 1)
+            GameTooltip:AddDoubleLine("After the pouch", e.net > 0 and ns.FormatMoneyIcons(e.net) or
+                ("profit " .. ns.FormatMoneyIcons(-e.net)), 1, 0.82, 0, 1, 1, 1)
+        end
+        GameTooltip:AddDoubleLine("Rep per gold", string.format("%s (%d rep)", ns.FormatRepPerGold(e.repPerGold), e.rep),
             1, 0.82, 0, 1, 1, 1)
     end
     if e.age and e.age > ns.Prices.STALE_DAYS then
@@ -1072,7 +1077,7 @@ local function BuyCells(e, done)
     local price, repPerGold
     if e.cost then
         price = ns.FormatMoneyIcons(e.cost)
-        repPerGold = C(COLOR.ready, string.format("%.1f", e.repPerGold))
+        repPerGold = C(COLOR.ready, ns.FormatRepPerGold(e.repPerGold))
     else
         price = ns.FormatMoneyIcons(e.writPrice) .. " + ?"
         repPerGold = C(COLOR.inbags, "no price")
@@ -1091,10 +1096,14 @@ local function AddPlanLine(parent, plan, planSet, onToggle)
         text = C(COLOR.ready, string.format("The writs you have already get you to %s (%s of the %s reputation needed).",
             plan.nextName, N(plan.have), N(plan.toGo)))
     elseif plan.writs then
+        local price = ns.FormatMoneyIcons(plan.cost)
+        if plan.net ~= plan.cost then
+            price = price .. " (" .. (plan.net > 0 and ns.FormatMoneyIcons(plan.net) or "nothing") ..
+                " after the coin pouches)"
+        end
         text = string.format("%s is %s reputation away%s. Cheapest way there: %s for %s.", plan.nextName,
             C(COLOR.ready, N(plan.need)), after,
-            C(COLOR.ready, string.format("%d writ%s", #plan.writs, #plan.writs == 1 and "" or "s")),
-            ns.FormatMoneyIcons(plan.cost))
+            C(COLOR.ready, string.format("%d writ%s", #plan.writs, #plan.writs == 1 and "" or "s")), price)
         text = text .. C(COLOR.dim, planSet and "  Click to show every writ again." or "  Click to show only these.")
     else
         text = string.format("%s is %s reputation away%s: more than all %d writs for sale give today.",
@@ -1116,10 +1125,16 @@ local function AddPlanLine(parent, plan, planSet, onToggle)
                     ns.FormatMoneyIcons(e.cost), 1, 1, 1, 1, 1, 1)
             end
             GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(plan.cost), 1, 0.82, 0, 1, 1, 1)
+            if plan.net ~= plan.cost then
+                GameTooltip:AddDoubleLine("Coin pouches back", "-" .. ns.FormatMoneyIcons(plan.cost - plan.net),
+                    1, 0.82, 0, 1, 1, 1)
+            end
             GameTooltip:AddDoubleLine("Reputation", N(plan.rep), 1, 0.82, 0, 1, 1, 1)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Writs you have or have done today aren't counted again: each one can be " ..
-                "turned in once a day. Prices are the writ plus the items it asks for. " .. RepBonusNote(),
+                "turned in once a day. Prices are the writ plus the items it asks for" ..
+                (ns.Prices.CashbackOn() and ", and the cheapest way counts the coin pouch you get back. " or ". ") ..
+                RepBonusNote(),
                 0.6, 0.6, 0.6, true)
             GameTooltip:Show()
         end)
@@ -1333,6 +1348,10 @@ function UI:BuildSettings(container)
             db.tooltips = v
             if writPrice then writPrice:SetDisabled(not v) end
         end)
+    AddCheckBox(scroll, "Mark recipes used by writs",
+        "A small icon on recipes at the trainer and in your profession window that craft an item a writ asks " ..
+        "for. Hover it to see which writs.",
+        db.markRecipes ~= false, function(v) db.markRecipes = v; CH.RecipeMarks:Refresh() end)
 
     AddHeading(scroll, "Price estimates")
     local P = ns.Prices
@@ -1373,6 +1392,21 @@ function UI:BuildSettings(container)
         "for when you buy writs instead of looting them.",
         db.includeWritPrice, function(v) db.includeWritPrice = v end)
     writPrice:SetDisabled(not db.tooltips)
+
+    AddCheckBox(scroll, "Count the coin pouch as money back",
+        "Turning in a writ gives a Coin Pouch. Take its average gold off the cost for rep per gold " ..
+        "and the cheapest way to your next standing.",
+        db.cashback ~= false, function(v) db.cashback = v; self:Redraw() end)
+    local pouchParts = {}
+    for _, tier in ipairs(ns.TIERS) do
+        local st = P.PouchStats(tier)
+        table.insert(pouchParts, ns.TIER_NAMES[tier] .. " " .. ns.FormatMoneyIcons(st.average))
+    end
+    local opened = 0
+    for _, tier in ipairs(ns.TIERS) do opened = opened + P.PouchStats(tier).opened end
+    AddLabel(scroll, C(COLOR.dim, "Average pouch: " .. table.concat(pouchParts, ", ") .. ". From Wowhead" ..
+        (opened > 0 and string.format(" and the %d pouch%s you've opened", opened, opened == 1 and "" or "es") or
+        ", until you open some") .. ". /writs pouches for details."), GameFontHighlightSmall)
 
     AddHeading(scroll, "Reputation")
     local dip = AceGUI:Create("Dropdown")
@@ -1652,15 +1686,16 @@ end
 ---------------------------------------------------------------------------
 
 function UI:ShowExport()
-    local text, n = CH:BuildExport()
-    if n == 0 then
-        CH:Print("Nothing to share yet: no new turn-in locations recorded. Deliver or accept Expert/Artisan writs to record some.")
+    local text, n, pouches = CH:BuildExport()
+    if n + pouches == 0 then
+        CH:Print("Nothing to share yet: no new turn-in locations or coin pouches recorded. Deliver or accept " ..
+            "Expert/Artisan writs, or open the coin pouches they give, to record some.")
         return
     end
     if self.exportFrame then AceGUI:Release(self.exportFrame) end
 
     local f = AceGUI:Create("Frame")
-    f:SetTitle("Craftman's Helper: share turn-in locations")
+    f:SetTitle("Craftman's Helper: share your data")
     f:SetLayout("List")
     f:SetWidth(520)
     f:SetHeight(360)
@@ -1668,14 +1703,18 @@ function UI:ShowExport()
         AceGUI:Release(widget)
         self.exportFrame = nil
     end)
-    f:SetStatusText(string.format("%d location%s recorded", n, n == 1 and "" or "s"))
+    local status = string.format("%d location%s recorded", n, n == 1 and "" or "s")
+    if pouches > 0 then
+        status = status .. string.format(", coin pouches of %d level%s", pouches, pouches == 1 and "" or "s")
+    end
+    f:SetStatusText(status)
 
     local intro = AceGUI:Create("Label")
     intro:SetFullWidth(true)
     intro:SetFontObject(GameFontHighlight)
     intro:SetText("Press Ctrl+C to copy, then paste it into a new issue at\n" ..
         C(COLOR.ready, "github.com/emsw0rth/craftmanshelper/issues") ..
-        "\nso everyone gets these locations in the next release. Thank you!")
+        "\nso everyone gets this data in the next release. Thank you!")
     f:AddChild(intro)
 
     local box = AceGUI:Create("MultiLineEditBox")

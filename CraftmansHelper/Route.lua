@@ -53,9 +53,9 @@ local function KnowsFlight(npcID)
     return fp ~= nil and fp[npcID] == true
 end
 
--- The non-walking parts of the way to a stop, in order: flights, boats, zeppelins,
--- the tram and "travel to ..." fallbacks. `board` is where the arrow points first
--- (the flight master or dock); fallbacks have none.
+-- The non-walking parts of the way to a stop, in order: crossings into another zone, flights,
+-- boats, zeppelins, the tram and "travel to ..." fallbacks. `board` is where the arrow points
+-- first (the crossing, flight master or dock); fallbacks have none.
 local function BuildVia(steps)
     local via = {}
     for _, step in ipairs(steps or {}) do
@@ -63,7 +63,12 @@ local function BuildVia(steps)
         if text then
             -- Fallbacks and the Hearthstone have no place to walk to first.
             local board = (step.kind ~= "travel" and step.kind ~= "hearth") and step.from or nil
-            table.insert(via, { kind = step.kind, text = text, from = step.from, to = step.to, board = board })
+            local into
+            if step.kind == "cross" then
+                board, into = step.to, ns.Travel.CrossInto(step.from, step.to)
+            end
+            table.insert(via, { kind = step.kind, text = text, from = step.from, to = step.to, board = board,
+                                into = into })
         end
     end
     return via
@@ -318,6 +323,7 @@ local function Passed(e, here)
         local d = ns.Travel.Yards(here, e.to)
         if d and d <= HEARTH_ARRIVE_YARDS then return true end
     end
+    if e.kind == "cross" then return e.into ~= nil and here.zone == e.into end
     return e.from.land ~= e.to.land and here.land == e.to.land
 end
 

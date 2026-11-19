@@ -2,13 +2,16 @@
 -- zeppelins and the tram, as a graph searched with Dijkstra.
 --
 -- Nodes are places ({ map, x, y } plus world coordinates): flight masters the
--- player can use, both ends of every transport link, and the points added by the
--- caller (the player's position and the turn-in stops). Edges, in seconds:
---   * ground: between any two nodes on the same landmass, distance / riding speed
+-- player can use, both ends of every transport link, the crossings between zones
+-- (Data/Crossings.lua; a crossing counts as part of both zones), and the points added by
+-- the caller (the player's position and the turn-in stops). Edges, in seconds:
+--   * ground: between two nodes in the same zone, distance / riding speed. Riding into
+--     another zone goes through a crossing. (Zones without crossing data: any two nodes on
+--     the same landmass.)
 --   * flight: between any two usable flight masters on the same continent
 --   * transport: between the two ends of a boat / zeppelin / tram link
---   * fallback: between landmasses with no known link ("travel to ..."), so a
---     stop is never unreachable just because a dock is missing from the data.
+--   * fallback: to places you can't ride to and have no known link to ("travel to ..."),
+--     so a stop is never unreachable because data is missing.
 -- Only C_Map (for world coordinates) touches the WoW API, so this runs in tests.
 local _, ns = ...
 
@@ -49,6 +52,47 @@ end
 -- For tests that swap ns.FlightLengths.
 function Travel.ResetFlightData() covered = nil end
 
+-- Whether the character carries an item (in the bags: a key has to be on you).
+function Travel.HasItem(itemID)
+    local count = (C_Item and C_Item.GetItemCount) or GetItemCount
+    return count ~= nil and (count(itemID) or 0) > 0
+end
+
+-- The zones a node is in: a crossing is in both (all) of its zones, anything else in its own.
+local function ZonesOf(node)
+    return node.zones or { [node.zone] = true }
+end
+
+-- Whether two nodes are in a zone together (so you ride between them without a crossing).
+function Travel.SharesZone(a, b)
+    if a.zone == b.zone then return true end
+    local za = ZonesOf(a)
+    for z in pairs(ZonesOf(b)) do
+        if za[z] then return true end
+    end
+    return false
+end
+
+-- Whether you can ride from node u to node v directly. Between zones with crossing data
+-- (graph.crossed), only within a zone; otherwise anywhere on the same landmass.
+function Travel.CanRide(graph, u, v)
+    if u.instance ~= v.instance then return false end
+    local crossed = graph.crossed
+    if crossed and crossed[u.zone] and crossed[v.zone] then return Travel.SharesZone(u, v) end
+    return u.land == v.land
+end
+
+-- The zone a step onto a crossing takes you into: the crossing's zone you weren't in yet.
+function Travel.CrossInto(from, crossing)
+    local was = ZonesOf(from)
+    if crossing.into then
+        for _, z in ipairs(crossing.into) do
+            if not was[z] then return z end
+        end
+    end
+    if not was[crossing.zone] then return crossing.zone end
+end
+
 function ns.WorldPos(map, x, y)
     if not (C_Map and C_Map.GetWorldPosFromMapPos and CreateVector2D) then return nil end
     local ok, instance, pos = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x / 100, y / 100))
@@ -87,7 +131,7 @@ end
 
 -- Riding time between two places on the same landmass (seconds).
 function Travel.WalkSeconds(graph, a, b)
-    local detour = (a.zone == b.zone) and Travel.GROUND_DETOUR or Travel.GROUND_DETOUR_ZONES
+    local detour = Travel.SharesZone(a, b) and Travel.GROUND_DETOUR or Travel.GROUND_DETOUR_ZONES
     return yards(a, b) * detour / graph.speed
 end
 
@@ -123,15 +167,41 @@ function Travel.AddNode(graph, node)
     return node
 end
 
+-- Whether a player of `faction` ("A" / "H") may use something limited to `required` ("A", "H",
+-- "AH"; nil = everyone). With the faction unknown, only what's open to everyone counts, so a
+-- route never puts you on the other faction's tram, boat or zeppelin.
 local function FactionOK(faction, required)
-    return not (faction and required) or required:find(faction, 1, true) ~= nil
+    if not required or required == "AH" then return true end
+    return faction ~= nil and required:find(faction, 1, true) ~= nil
 end
+Travel.FactionOK = FactionOK
 
 -- opts: faction = "A" | "H" | nil, speed = yards/second,
---       knowsFlight = function(npcID, node) -> bool (nil: every flight master counts)
+--       knowsFlight = function(npcID, node) -> bool (nil: every flight master counts),
+--       hasItem = function(itemID) -> bool for keys to gates (nil: the character's bags)
 function Travel.NewGraph(opts)
     opts = opts or {}
     local graph = { nodes = {}, speed = opts.speed or Travel.SPEED.foot }
+
+    -- Crossings between zones: the ones open to you (your faction's capitals, keys you carry).
+    if ns.Crossings then
+        local hasItem = opts.hasItem or Travel.HasItem
+        graph.crossed = {}
+        for zone, list in pairs(ns.Crossings) do
+            graph.crossed[zone] = true
+            for _, c in ipairs(list) do
+                if FactionOK(opts.faction, c.faction) and not (c.item and not hasItem(c.item)) then
+                    local into = type(c.to) == "table" and c.to or { c.to }
+                    local node = Travel.AddNode(graph, { kind = "crossing", map = zone, x = c.x, y = c.y,
+                                                         note = c.note, into = into })
+                    if node then
+                        node.zones = { [node.zone] = true }
+                        for _, z in ipairs(into) do node.zones[z] = true end
+                    end
+                end
+            end
+        end
+    end
 
     for npcID, fm in pairs(ns.FlightMasters or {}) do
         if FactionOK(opts.faction, fm.faction) then
@@ -170,8 +240,8 @@ end
 local function Edges(graph, u, visit)
     for _, v in ipairs(graph.nodes) do
         if v ~= u then
-            if v.land == u.land then
-                visit(v, Travel.WalkSeconds(graph, u, v), "walk")
+            if Travel.CanRide(graph, u, v) then
+                visit(v, Travel.WalkSeconds(graph, u, v), v.kind == "crossing" and "cross" or "walk")
             else
                 visit(v, Travel.FALLBACK_SECONDS, "travel")
             end
@@ -240,6 +310,12 @@ function Travel.Describe(step)
             step.to.name or "?", PlaceName(step.to))
     elseif step.kind == "travel" then
         return "Travel to " .. PlaceName(step.to)
+    elseif step.kind == "cross" then
+        local into = Travel.CrossInto(step.from, step.to)
+        local _, intoName = ns.ResolveZone(into or step.to.map)
+        local where = string.format("%s %.1f, %.1f", PlaceName(step.to), step.to.x, step.to.y)
+        if not into then return string.format("Ride to %s", where) end
+        return string.format("Ride into %s%s (%s)", intoName or "?", step.to.note and (", " .. step.to.note) or "", where)
     elseif step.kind == "hearth" then
         return string.format("Use your Hearthstone (%s)", step.to.name or PlaceName(step.to))
     elseif step.kind ~= "walk" then

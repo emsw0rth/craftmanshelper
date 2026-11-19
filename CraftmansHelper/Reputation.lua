@@ -143,6 +143,7 @@ end
 --   { nextName, toGo = rep to the next standing, have = rep from the writs you have
 --     (quest log, bags and bank), need = toGo - have,
 --     writs, cost, rep = the cheapest writs to buy for the rest (when need > 0 and it can be done),
+--     net = cost minus their coin pouches (picked on that),
 --     forSale = how many writs you could buy (when it can't) }
 -- Writs you have or have done today aren't bought again: each can be turned in once a day.
 function Rep.NextStandingPlan()
@@ -158,12 +159,20 @@ function Rep.NextStandingPlan()
         local owned = s.inLog or (s.writsInBags or 0) > 0 or (s.writsTotal or 0) > 0
         if s.status ~= STATUS.DONE and not owned then
             local e = ns.Prices.GetWritBuyEstimate(writID)
-            if e and e.cost and e.rep then table.insert(entries, e) end
+            if e and e.cost and e.rep then
+                -- Picked on the cost after the coin pouch; one that pays for itself counts as free.
+                table.insert(entries, { writID = writID, cost = math.max(0, e.net or e.cost), rep = e.rep, e = e })
+            end
         end
     end
     local pick = Rep.Cheapest(entries, out.need)
     if pick then
-        out.writs, out.cost, out.rep = pick.writs, pick.cost, pick.rep
+        out.writs, out.rep, out.cost, out.net = {}, pick.rep, 0, 0
+        for _, p in ipairs(pick.writs) do
+            table.insert(out.writs, p.e)
+            out.cost = out.cost + p.e.cost
+            out.net = out.net + (p.e.net or p.e.cost)
+        end
     else
         out.forSale = #entries
     end

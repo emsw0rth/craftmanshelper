@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.10.2)
+## Features (v1.10.3)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -25,6 +25,9 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
   Auctionator or TradeSkillMaster (any TSM custom price string). Optionally includes the writ's own price.
+- **Coin pouch cashback:** the Coin Pouch each turn-in gives is counted as money back in rep per gold and the
+  cheapest way to your next standing ("profit" when it pays more than the writ costs). Starts from Wowhead's
+  average per writ level and learns from the pouches you open (`/writs pouches`).
 - **Buy Writs** tab: a table of the writs on the Auction House (name, level, price of writ + required items,
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
   and NPC, and hide writs you carry or have done today. Shows when Auctionator last did a full scan.
@@ -34,6 +37,8 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
   reputation per rank, per character), Hearthstone use, route tracker, minimap button, and the list of remembered
   characters.
+- **Recipe markers:** recipes at the trainer and in your profession window that craft an item a writ asks for
+  get a small icon; hover it to see which writs. The trainer's recipe tooltips list them too.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
   **Shopping** tab of missing crafted items.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
@@ -51,7 +56,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
-`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
 
 ## Install (development)
 
@@ -70,6 +75,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Data/Writs.lua` | All 150 writs: writ item ID → quest, tier, professions, required item, count, turn-in key |
 | `CraftmansHelper/Data/TurnIns.lua` | Turn-in NPCs → zone (uiMapID) and coordinates where known |
 | `CraftmansHelper/Data/FlightMasters.lua` | Flight masters with position and faction (generated from QuestieDB) |
+| `CraftmansHelper/Data/Crossings.lua` | Where you ride from one zone into the next: roads, passes, tunnels, gates (collected in-game) |
 | `CraftmansHelper/Data/Transports.lua` | Boats, zeppelins, skycutters and the tram: one-way links between docks (Glyalith's data) |
 | `CraftmansHelper/Data/FlightLengths.lua` | Flown length of every direct flight route, by taxi node (Glyalith's data) |
 | `CraftmansHelper/Core.lua` | Addon object, saved variables, slash commands |
@@ -77,8 +83,10 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/Alts.lua` | Writs and writ items on each character's bags and bank (account-wide) |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
-| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API; reputation per tier |
+| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API; reputation per tier; coin pouch averages |
+| `CraftmansHelper/Pouches.lua` | Learns how much gold each coin pouch gives when it's opened |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
+| `CraftmansHelper/RecipeMarks.lua` | Writ icons on trainer and profession recipes |
 | `CraftmansHelper/Minimap.lua` | Minimap button (LibDataBroker + LibDBIcon) |
 | `CraftmansHelper/Nav.lua` | Waypoints: TomTom, or the game's map pin as a fallback |
 | `CraftmansHelper/Solver.lua` | Route ordering on any cost (pure Lua): exact for 10 stops or fewer, nearest-neighbour + 2-opt above that |
@@ -89,7 +97,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
 | `CraftmansHelper/Media/` | Textures (the dotted line between table rows) |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
@@ -133,6 +141,10 @@ skycutter / tram link, the player and the stops, and runs Dijkstra between them.
 - Boats, zeppelins and skycutters: 4 minutes including the wait; the tram 2 minutes. Links are one-way
   (some boats sail a loop).
 - Hearthstone: 30 s, used at most once, only where it's off cooldown and saves at least a minute.
+- Riding into another zone goes through a crossing: a road, pass, tunnel or gate (`Data/Crossings.lua`, collected
+  in-game). Each one is a direction ("Ride into Tanaris (Thousand Needles 74.9, 93.3)") with the arrow on it. From
+  Thousand Needles, Un'Goro Crater is reached through Tanaris. Capital gates are for their own faction, and the
+  Searing Gorge gate only counts with the Key to Searing Gorge.
 - Teldrassil, the Riverglades and Zephras Isle count as islands. Landmasses with no known link get a 15-minute fallback.
 
 Transport links and flight lengths are Glyalith's WoW Forever data. Re-import them with

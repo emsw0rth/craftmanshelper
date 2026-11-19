@@ -6,6 +6,9 @@ Each export line is  quest;source;id;kind;name;map;x;y  (v2; v1 used "|", which 
 edit boxes, but well-formed v1 lines are still accepted).  Locations recorded at an actual
 turn-in ("turnin", with an NPC/object ID) win over map-marker ones ("marker"). Writs that
 already have coordinates in Data/TurnIns.lua are left alone.
+
+Coin pouch lines ( pouch;itemID;opened;total;min;max ) are summed and printed, to update
+ns.POUCH_AVERAGE in Prices.lua by hand.
 """
 import re
 import sys
@@ -35,6 +38,33 @@ def parse_exports(paths):
     return best
 
 
+POUCH_TIERS = {284584: "JOURNEYMAN", 284585: "EXPERT", 284586: "ARTISAN"}
+
+
+def parse_pouches(paths):
+    totals = {}  # itemID -> [opened, total, min, max]
+    for path in paths:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            parts = line.strip().split(";")
+            if len(parts) != 6 or parts[0] != "pouch" or not all(p.isdigit() for p in parts[1:]):
+                continue
+            item, n, total, lo, hi = map(int, parts[1:])
+            if item not in POUCH_TIERS or n <= 0:
+                continue
+            t = totals.setdefault(item, [0, 0, lo, hi])
+            t[0], t[1], t[2], t[3] = t[0] + n, t[1] + total, min(t[2], lo), max(t[3], hi)
+    return totals
+
+
+def print_pouches(totals):
+    if not totals:
+        return
+    print("Coin pouches (copper):")
+    for item, (n, total, lo, hi) in sorted(totals.items()):
+        print(f"  {POUCH_TIERS[item]:<10} {n} opened, average {total / n:.0f}, {lo} to {hi}")
+    print()
+
+
 def lua_str(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -46,6 +76,7 @@ def main():
         print(__doc__)
         sys.exit(2)
 
+    print_pouches(parse_pouches(args))
     records = parse_exports(args)
     writs = WRITS.read_text(encoding="utf-8")
     turnins = TURNINS.read_text(encoding="utf-8")

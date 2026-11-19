@@ -77,6 +77,10 @@ ns.TurnIns = {
     -- Wetlands
     [8305] = { name = "Kixxle", map = 1437, x = 50.2, y = 37.7, faction = "AH" },
     -- Contributed: recorded in-game by players (/writs export)
+    [7408] = { name = "Spigot Operator Luglunket", map = 1446, x = 52.4, y = 28.4 }, -- turnin
+    [11705] = { name = "Rayan Dawnrisen", map = 1447, x = 30.0, y = 40.2 }, -- turnin
+    [14348] = { name = "Earthcaller Franzahl", map = 1452, x = 54.0, y = 90.4 }, -- turnin
+    [14437] = { name = "Gorzeeki Wildeyes", map = 1428, x = 12.6, y = 31.4 }, -- turnin
     [257429] = { name = "Furious Shadowforge Digger", map = 1418, x = 44.4, y = 11.4 }, -- turnin
     [11019] = { name = "Jessir Moonbow", map = 1448, x = 51.3, y = 82.1 }, -- turnin
     [12029] = { name = "Narianna", map = 1450, x = 53.3, y = 42.7 }, -- turnin

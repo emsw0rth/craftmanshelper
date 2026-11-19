@@ -17,6 +17,7 @@ for writID, w in pairs(ns.Writs) do
     writsByItem[w.item] = writsByItem[w.item] or {}
     table.insert(writsByItem[w.item], writID)
 end
+ns.WritsByItem = writsByItem
 
 local STATUS_TEXT = {
     [STATUS.READY] = { "Ready to deliver", 0.13, 1, 0.13 },
@@ -83,16 +84,30 @@ local function AddWritInfo(tooltip, writID)
             price = string.format("%s (%d days old)", price, est.age)
         end
         tooltip:AddDoubleLine("Estimated price", price, 1, 0.82, 0, 1, 1, 1)
-        if est.repPerGold then
-            tooltip:AddDoubleLine("Rep per gold", string.format("%.1f (%d rep)", est.repPerGold, est.rep),
-                1, 0.82, 0, 1, 1, 1)
+    end
+    local pouch = ns.Prices.PouchStats(s.writ.tier)
+    if pouch then
+        local back = "~" .. ns.FormatMoneyIcons(pouch.average)
+        if pouch.opened > 0 then
+            back = string.format("%s (%s - %s, %d opened)", back, ns.FormatMoney(pouch.min), ns.FormatMoney(pouch.max),
+                pouch.opened)
         end
+        tooltip:AddDoubleLine("Coin pouch", back, 1, 0.82, 0, 1, 1, 1)
+    end
+    if est and est.repPerGold then
+        tooltip:AddDoubleLine("Rep per gold", string.format("%s (%d rep)", ns.FormatRepPerGold(est.repPerGold), est.rep),
+            1, 0.82, 0, 1, 1, 1)
     end
 end
 
-local function AddCraftInfo(tooltip, itemID, writIDs)
-    tooltip:AddLine(" ")
-    tooltip:AddLine("Craftman's Helper: wanted by a writ", HEADER_R, HEADER_G, HEADER_B)
+-- fresh: the tooltip is ours alone (a recipe marker), so no spacer line above the heading.
+local function AddCraftInfo(tooltip, itemID, writIDs, fresh)
+    if fresh then
+        tooltip:SetText("Craftman's Helper: used by a writ", HEADER_R, HEADER_G, HEADER_B)
+    else
+        tooltip:AddLine(" ")
+        tooltip:AddLine("Craftman's Helper: wanted by a writ", HEADER_R, HEADER_G, HEADER_B)
+    end
     local elsewhere = Elsewhere(itemID, "items")
     if elsewhere then tooltip:AddDoubleLine("Also have", elsewhere, 1, 0.82, 0, 1, 1, 1) end
     -- Writs you're working on first.
@@ -109,6 +124,15 @@ local function AddCraftInfo(tooltip, itemID, writIDs)
             tooltip:AddLine("    " .. Where(s), 0.6, 0.6, 0.6)
         end
     end
+end
+
+-- Writ lines for a crafted item on any tooltip (recipe markers, trainer tooltips).
+-- Returns false when no writ asks for the item.
+function Tooltips.AddCraftLines(tooltip, itemID, fresh)
+    local writIDs = writsByItem[itemID]
+    if not writIDs then return false end
+    AddCraftInfo(tooltip, itemID, writIDs, fresh)
+    return true
 end
 
 local function OnItemTooltip(tooltip, data)

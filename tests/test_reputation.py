@@ -141,6 +141,13 @@ lua.execute("standing.currentStanding = 3000 + 5440")
 plan = R.NextStandingPlan()
 check("plan: buys the one writ for sale",
       plan.need == 35 and [e.writID for e in plan.writs.values()] == [6] and plan.cost == 700, (plan.need, plan.cost))
+check("plan: no pouch data, net is the cost", plan.net == 700, plan.net)
+lua.execute("""ns.Prices.GetWritBuyEstimate = function(id)
+    local cost = ({ [5] = 5000, [6] = 700 })[id]
+    return { writID = id, cost = cost, net = cost - 900, rep = ns.WritRep(id) } end""")
+plan = R.NextStandingPlan()
+check("plan: coin pouch paying it all back", plan.cost == 700 and plan.net == -200
+      and [e.writID for e in plan.writs.values()] == [6], (plan.cost, plan.net))
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

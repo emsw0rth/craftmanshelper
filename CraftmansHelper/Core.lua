@@ -40,9 +40,11 @@ local defaults = {
         mineAltsOpen = {},         -- "My Writs": [character key] = true for unfolded character sections
         minimap = { hide = false }, -- LibDBIcon position/visibility
         tooltips = true,           -- add writ info to item tooltips
+        markRecipes = true,        -- mark trainer and profession recipes that craft a writ item
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
         priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR" or "TSM" (Prices.lua)
-        tsmPrice = "",             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
+        tsmPrice = "",
+        cashback = true,           -- subtract the coin pouch's average gold from writ costs             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
         buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"
         buySortDesc = nil,         -- "Buy Writs" tab: reversed order; nil = the column's usual order
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
@@ -68,6 +70,8 @@ local defaults = {
         learned = {},
         -- Writs and writ items each of your characters holds: ["Realm-Name"] = { ... } (Alts.lua)
         characters = {},
+        -- Gold from opened Coin Pouches: [pouch itemID] = { n, total, min, max } (Pouches.lua)
+        pouches = {},
     },
 }
 
@@ -96,7 +100,8 @@ local HELP = {
     "/writs minimap - show / hide the minimap button",
     "/writs resetpos - move the window and route tracker back to the middle of the screen",
     "/writs tooltips - turn writ info in item tooltips on / off",
-    "/writs export - share the turn-in locations you've recorded",
+    "/writs pouches - what the coin pouches from writs pay",
+    "/writs export - share the turn-in locations and coin pouches you've recorded",
     "/writs learned - list turn-in locations recorded in-game",
 }
 
@@ -137,6 +142,8 @@ function CH:SlashCommand(input)
         self:Print("Item tooltips " .. (self.db.profile.tooltips and "on." or "off."))
     elseif cmd == "export" then
         self.UI:ShowExport()
+    elseif cmd == "pouches" or cmd == "pouch" then
+        self.Pouches:PrintStats()
     elseif cmd == "status" then
         self:PrintStatus()
     elseif cmd == "learned" then
@@ -165,8 +172,10 @@ function CH:PrintLearned()
     if n == 0 then self:Print("No turn-in locations recorded yet.") end
 end
 
--- Recorded turn-in locations the addon doesn't ship with yet, as shareable text.
+-- Recorded turn-in locations the addon doesn't ship with yet, and coin pouch amounts, as
+-- shareable text. Returns the text, the number of locations and the number of pouch lines.
 -- Format v2 (one line per writ quest): quest;source;id;kind;name;map;x;y
+-- Pouch lines: pouch;itemID;opened;total copper;min;max
 -- No "|" anywhere: WoW treats it as an escape character in edit boxes
 -- ("||" shows as "|", "|t" starts a texture), which mangled v1 exports.
 function CH:BuildExport()
@@ -188,7 +197,16 @@ function CH:BuildExport()
             n = n + 1
         end
     end
-    return table.concat(lines, "\n"), n
+    local pouches = 0
+    for _, tier in ipairs(ns.TIERS) do
+        local id = ns.POUCHES[tier]
+        local r = (self.db.global.pouches or {})[id]
+        if r and (r.n or 0) > 0 then
+            table.insert(lines, string.format("pouch;%d;%d;%d;%d;%d", id, r.n, r.total, r.min or 0, r.max or 0))
+            pouches = pouches + 1
+        end
+    end
+    return table.concat(lines, "\n"), n, pouches
 end
 
 function ns.FormatDuration(seconds)
