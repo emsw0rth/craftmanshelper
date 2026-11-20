@@ -216,7 +216,13 @@ end
 
 function Tracker:Refresh()
     local learned = CH.db.global.learned
+    local completed, now = CH.db.char.completed, GetServerTime()
     for writID, w in pairs(ns.Writs) do
+        -- Done today per the server, also when the addon didn't see the turn-in: saved so your
+        -- other characters see it (Alts.lua).
+        if IsQuestFlaggedCompleted(w.quest) and not ((completed[w.quest] or 0) > now) then
+            completed[w.quest] = self:NextResetTime()
+        end
         -- Writs in the log mark their turn-in on the map: record it (once) before building state.
         if not learned[w.quest] and C_QuestLog.GetLogIndexForQuestID(w.quest) then
             self:RecordMarker(w.quest)

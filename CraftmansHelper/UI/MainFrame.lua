@@ -1164,9 +1164,9 @@ function UI:BuildBuy(container)
     end
     local function Refilter() GoToPage(1) end
 
-    -- Controls in three fixed rows, each sharing the window's width, so they keep their
+    -- Controls in four fixed rows, each sharing the window's width, so they keep their
     -- place at any window size:
-    --   zone, NPC / the two checkboxes / page buttons
+    --   zone, NPC / hide done today by whom / hide writs I have / page buttons
     local function Row()
         local row = AceGUI:Create("SimpleGroup")
         row:SetFullWidth(true)
@@ -1175,14 +1175,14 @@ function UI:BuildBuy(container)
         return row
     end
     local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
-    local rowPlace, rowHide, rowPage = Row(), Row(), Row()
+    local rowPlace, rowDone, rowHide, rowPage = Row(), Row(), Row(), Row()
 
     -- Sort: the column chosen by clicking its title, and a direction.
     local sortKey, sortDesc, sortBy = TableSort(db, "buy", BUY_COLUMNS, "price", Refilter)
 
 
 
-    local function HideBox(label, key, tip)
+    local function HideBox(row, label, key, tip)
         local cb = AceGUI:Create("CheckBox")
         cb:SetLabel(label)
         cb:SetRelativeWidth(HALF)
@@ -1195,10 +1195,34 @@ function UI:BuildBuy(container)
             GameTooltip:Show()
         end)
         cb:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-        rowHide:AddChild(cb)
+        row:AddChild(cb)
     end
-    HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
-    HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
+    HideBox(rowDone, "Hide done today by", "buyHideDone", "Hide writs turned in since the daily reset by the character chosen next to it. Unticked, they're marked \"done today\".")
+    HideBox(rowHide, "Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
+
+    -- Whose writs count as done today, e.g. your main's while you shop on a bank alt.
+    local others = CH.Alts:Others()
+    local doneList, doneOrder = { ME = "This character", ANY = "Any of my characters" }, { "ME" }
+    for _, o in ipairs(others) do
+        doneList[o.key] = CH.Alts.ColoredName(o.entry, true)
+        table.insert(doneOrder, o.key)
+    end
+    table.insert(doneOrder, "ANY")
+    if not doneList[db.buyDoneBy] then db.buyDoneBy = "ME" end
+    local doneBy = AceGUI:Create("Dropdown")
+    doneBy:SetRelativeWidth(HALF)
+    doneBy:SetList(doneList, doneOrder)
+    doneBy:SetValue(db.buyDoneBy)
+    doneBy:SetCallback("OnValueChanged", function(_, _, v) db.buyDoneBy = v; Refilter() end)
+    rowDone:AddChild(doneBy)
+    local function DoneToday(writID)
+        if db.buyDoneBy ~= "ANY" then return CH.Alts:DoneToday(db.buyDoneBy ~= "ME" and db.buyDoneBy or nil, writID) end
+        if CH.Alts:DoneToday(nil, writID) then return true end
+        for _, o in ipairs(others) do
+            if CH.Alts:DoneToday(o.key, writID) then return true end
+        end
+        return false
+    end
 
     -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
     local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
@@ -1259,7 +1283,7 @@ function UI:BuildBuy(container)
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
         local s = CH.Tracker:GetState(writID)
         if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end
-        return not (db.buyHideDone and s.status == STATUS.DONE)
+        return not (db.buyHideDone and DoneToday(writID))
     end, sortDesc, SortValue)
 
     local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
@@ -1305,7 +1329,7 @@ function UI:BuildBuy(container)
     local first = (page - 1) * BUY_PAGE_SIZE + 1
     for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
         local e = list[i]
-        local done = not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE
+        local done = not db.buyHideDone and DoneToday(e.writID)
         table.insert(rows, {
             cells = BuyCells(e, done),
             onEnter = function(frame) ShowBuyTooltip({ frame = frame }, e) end,
@@ -1318,6 +1342,118 @@ function UI:BuildBuy(container)
         })
     end
     AddTable(scroll, "buy", BUY_COLUMNS, rows, sortKey, sortDesc, sortBy)
+end
+
+---------------------------------------------------------------------------
+-- Tab: Crates
+---------------------------------------------------------------------------
+
+local CRATE_COLUMNS = {
+    { key = "name", title = "Name", width = 0.33 },
+    { key = "level", title = "Level", width = 0.14 },
+    { key = "price", title = "Price", width = 0.20 },
+    { key = "favor", title = "Favor/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", width = 0.11,
+      sortName = "Merchant's Favor per gold", descFirst = true },
+    { key = "bundle", title = "Cheapest bundle", width = 0.21 },
+}
+
+local function ShowCrateTooltip(frame, e)
+    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    GameTooltip:SetItemByID(e.crateID)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Crate", ns.FormatMoneyIcons(e.cratePrice), 1, 0.82, 0, 1, 1, 1)
+    for _, f in ipairs(e.fills) do
+        local r, g, b = 1, 1, 1
+        if f == e.best then r, g, b = 0.13, 1, 0.13 end
+        GameTooltip:AddDoubleLine(string.format("%d %s", f.count, ItemName(f.item, f.name)),
+            f.cost and ns.FormatMoneyIcons(f.cost) or "no price", r, g, b, r, g, b)
+    end
+    if e.cost then
+        GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(e.cost), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Favor per gold", string.format("%s (%d Merchant's Favor)",
+            ns.FormatRepPerGold(e.favorPerGold), e.favor), 1, 0.82, 0, 1, 1, 1)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Shift-click to link the crate, Alt-click its cheapest bundle.", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+-- What a Forged Delivery Receipt's reputation costs: the cheapest empty crate, and the receipt's
+-- Merchant's Favor at the cheapest way to earn it.
+local function AddReceiptBox(parent)
+    local r = ns.Prices.GetReceiptEstimate()
+    if not r then return end
+    local box = AceGUI:Create("InlineGroup")
+    box:SetFullWidth(true)
+    box:SetLayout("Flow")
+    box:SetTitle(string.format("Forged Delivery Receipt (from Friendly): %d rep, %s rep/g", r.rep,
+        ns.FormatRepPerGold(r.repPerGold)))
+    -- Name on the left, price right-aligned, like a tooltip's double line.
+    local function Line(left, right)
+        for i, text in ipairs({ left, right }) do
+            local l = AceGUI:Create("Label")
+            l:SetRelativeWidth(i == 1 and 0.74 or 0.25)
+            l:SetFontObject(GameFontHighlight)
+            l:SetJustifyH(i == 1 and "LEFT" or "RIGHT")
+            l:SetText(text)
+            box:AddChild(l)
+        end
+    end
+    local id, fc = r.crate.crateID, r.favorCrate
+    Line(ItemName(id, "Waylaid Crate: " .. ns.Crates[id].name), ns.FormatMoneyIcons(r.crate.cratePrice))
+    Line(string.format("Forged Delivery Receipt (%d Merchant's Favor)", ns.RECEIPT_FAVOR), ns.FormatMoneyIcons(r.favorCost))
+    AddLabel(box, C(COLOR.dim, string.format("Favor from filling %s with %d %s", ns.Crates[fc.crateID].name,
+        fc.best.count, ItemName(fc.best.item, fc.best.name))), GameFontHighlightSmall)
+    Line("Total", ns.FormatMoneyIcons(r.cost))
+    parent:AddChild(box)
+end
+
+function UI:BuildCrates(container)
+    local db = CH.db.profile
+    container:SetLayout("Fill")
+    local scroll = CreateScroll(container, "crates")
+    if not ns.Prices.IsAvailable() then
+        AddLabel(scroll, "This tab needs Auction House prices from Auctionator or TradeSkillMaster.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
+        return
+    end
+
+    local sortKey, desc, sortBy = TableSort(db, "crate", CRATE_COLUMNS, "favor", function() self:Redraw() end)
+    local rows = {}
+    for _, e in ipairs(ns.Prices.GetCrateList()) do
+        local c = ns.Crates[e.crateID]
+        local name = ItemName(e.crateID, "Waylaid Crate: " .. c.name)
+        local bundle = e.best and string.format("%d %s", e.best.count, ItemName(e.best.item, e.best.name))
+        table.insert(rows, {
+            cells = {
+                name,
+                C(COLOR.dim, ns.TIER_NAMES[c.tier]),
+                e.cost and ns.FormatMoneyIcons(e.cost) or (ns.FormatMoneyIcons(e.cratePrice) .. " + ?"),
+                e.cost and C(COLOR.ready, ns.FormatRepPerGold(e.favorPerGold)) or C(COLOR.inbags, "no price"),
+                bundle and C(COLOR.dim, bundle) or C(COLOR.dim, "-"),
+            },
+            sort = { name = name:lower(), level = ns.TIER_NAMES[c.tier], price = e.cost, favor = e.favorPerGold,
+                     bundle = bundle and bundle:lower(), tie = name:lower() },
+            onEnter = function(frame) ShowCrateTooltip(frame, e) end,
+            onClick = function()
+                local id = IsAltKeyDown() and e.best and e.best.item or (IsModifiedClick("CHATLINK") and e.crateID)
+                if not id then return end
+                local _, link = C_Item.GetItemInfo(id)
+                if link then InsertLink(link) end
+            end,
+        })
+    end
+    SortRows(rows, sortKey, desc)
+
+    if #rows == 0 then
+        AddLabel(scroll, "No Waylaid Crates with an Auction House price yet.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
+        return
+    end
+    AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the crate plus its cheapest bundle."),
+        GameFontHighlightSmall)
+    AddReceiptBox(scroll)
+    AddTable(scroll, "crates", CRATE_COLUMNS, rows, sortKey, desc, sortBy)
 end
 
 ---------------------------------------------------------------------------
@@ -1562,6 +1698,7 @@ function UI:Create()
         { text = "Route", value = "route" },
         { text = "Shopping", value = "shopping" },
         { text = "Buy Writs", value = "buy" },
+        { text = "Crates", value = "crates" },
         { text = "All Writs", value = "all" },
         { text = "Settings", value = "settings" },
     })
@@ -1577,6 +1714,8 @@ function UI:Create()
             self:BuildShopping(container)
         elseif group == "buy" then
             self:BuildBuy(container)
+        elseif group == "crates" then
+            self:BuildCrates(container)
         elseif group == "settings" then
             self:BuildSettings(container)
         else

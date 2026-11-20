@@ -316,6 +316,56 @@ function Prices.GetBuyList(sortBy, filter, desc, valueOf)
     return list
 end
 
+-- Cost of buying a Waylaid Crate and the cheapest bundle to fill it, or nil when the crate has no price:
+--   { crateID, cratePrice, fills = { { item, count, name, cost (nil when unknown) } }, best = the cheapest
+--     priced fill, cost = crate + best (nil without one), favor, favorPerGold (nil without cost) }
+function Prices.GetCrateEstimate(crateID)
+    local c = ns.Crates[crateID]
+    local cratePrice = c and Prices.GetItemPrice(crateID)
+    if not cratePrice then return nil end
+    local e = { crateID = crateID, cratePrice = cratePrice, fills = {},
+                favor = ns.CRATE_FAVOR[c.tier] * (c.quality == 2 and 2 or 1) }
+    for _, f in ipairs(c.fills) do
+        local unit = Prices.GetItemPrice(f.item)
+        local fill = { item = f.item, count = f.count, name = f.name, cost = unit and unit * f.count }
+        table.insert(e.fills, fill)
+        if fill.cost and (not e.best or fill.cost < e.best.cost) then e.best = fill end
+    end
+    e.cost = e.best and cratePrice + e.best.cost
+    e.favorPerGold = Prices.RepPerGold(e.favor, e.cost)
+    return e
+end
+
+-- Every Waylaid Crate on the Auction House, unsorted.
+function Prices.GetCrateList()
+    local list = {}
+    for crateID in pairs(ns.Crates) do
+        local e = Prices.GetCrateEstimate(crateID)
+        if e then table.insert(list, e) end
+    end
+    return list
+end
+
+-- A Forged Delivery Receipt on the cheapest empty crate, its Merchant's Favor counted at the cheapest
+-- way to earn it, or nil without crate prices: { crate = the empty crate's estimate, favorCrate = the
+-- estimate that earns favor cheapest, favorCost, cost = crate + favor, rep, repPerGold }
+function Prices.GetReceiptEstimate()
+    local crate, favorCrate
+    for _, e in ipairs(Prices.GetCrateList()) do
+        if not crate or e.cratePrice < crate.cratePrice
+            or (e.cratePrice == crate.cratePrice and e.crateID < crate.crateID) then
+            crate = e
+        end
+        if e.cost and (not favorCrate or e.cost / e.favor < favorCrate.cost / favorCrate.favor) then favorCrate = e end
+    end
+    if not (crate and favorCrate) then return nil end
+    local favorCost = favorCrate.cost / favorCrate.favor * ns.RECEIPT_FAVOR
+    local rep = math.floor(ns.RECEIPT_REP * (1 + ns.DIPLOMAT_STEP * ns.DiplomatRank()) + 1e-6)
+    local cost = crate.cratePrice + favorCost
+    return { crate = crate, favorCrate = favorCrate, favorCost = favorCost, cost = cost, rep = rep,
+             repPerGold = Prices.RepPerGold(rep, cost) }
+end
+
 -- Money with the game's gold/silver/copper coin icons, like the "Auction" tooltip line.
 -- Falls back to plain text (FormatMoney) outside the client.
 function ns.FormatMoneyIcons(copper)

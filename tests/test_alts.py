@@ -207,5 +207,14 @@ check("others: same realm and faction, not you", "Logger" not in names and "Main
 check("others: no other realm or faction", all(chars()[o.key].realm == "Realm" and chars()[o.key].faction == "Alliance"
                                                for o in A.Others(A).values()))
 
+# Done today: another character's from its snapshot, until the reset; this one's from the tracker.
+lua.execute("""now = 1000
+    ns.CH.Tracker.GetState = function(_, id) return { status = id == 300 and "done" or "available" } end""")
+check("done today by another character", A.DoneToday(A, "Realm-Logger", 200) and not A.DoneToday(A, "Realm-Logger", 100)
+      and not A.DoneToday(A, "Realm-Nobody", 200))
+check("done today by this character", A.DoneToday(A, None, 300) and not A.DoneToday(A, None, 200))
+lua.execute("now = 2000")
+check("done today expires at the reset", not A.DoneToday(A, "Realm-Logger", 200))
+
 print("All passed" if failures == 0 else f"{failures} failure(s)", f"({failures} failure(s))")
 raise SystemExit(1 if failures else 0)
