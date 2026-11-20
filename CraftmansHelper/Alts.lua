@@ -151,6 +151,15 @@ function Alts:Others()
     return list
 end
 
+-- Whether a character has turned in a writ since the daily reset: an Others() key (from its
+-- snapshot), or nil for this character.
+function Alts:DoneToday(key, writID)
+    if not key then return CH.Tracker:GetState(writID).status == ns.STATUS.DONE end
+    local c = Characters()[key]
+    local expires = c and c.done and c.done[writID]
+    return expires ~= nil and expires > (GetServerTime and GetServerTime() or 0)
+end
+
 -- The writs another character holds and can still turn in today, from its snapshot, as
 -- writ states like Tracker's (status, have, need, turnIn, zone...), plus bankOnly for
 -- writs only in its bank. unstarted: include writs in its bags and bank, not just its log.

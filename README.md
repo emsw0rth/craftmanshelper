@@ -32,6 +32,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
   and NPC, and hide writs you carry or have done today. Shows when Auctionator last did a full scan.
   - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
+  - **Hide done today by** this character, one of your others, or any of them.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%

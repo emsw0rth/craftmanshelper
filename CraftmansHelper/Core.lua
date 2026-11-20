@@ -48,6 +48,7 @@ local defaults = {
         buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"
         buySortDesc = nil,         -- "Buy Writs" tab: reversed order; nil = the column's usual order
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
+        buyDoneBy = "ME",          -- "Buy Writs" tab: whose writs count as done: "ME", "ANY" or a character key
         buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log or bags (bank and alts are tagged)
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")

@@ -1164,9 +1164,9 @@ function UI:BuildBuy(container)
     end
     local function Refilter() GoToPage(1) end
 
-    -- Controls in three fixed rows, each sharing the window's width, so they keep their
+    -- Controls in four fixed rows, each sharing the window's width, so they keep their
     -- place at any window size:
-    --   zone, NPC / the two checkboxes / page buttons
+    --   zone, NPC / hide done today by whom / hide writs I have / page buttons
     local function Row()
         local row = AceGUI:Create("SimpleGroup")
         row:SetFullWidth(true)
@@ -1175,14 +1175,14 @@ function UI:BuildBuy(container)
         return row
     end
     local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
-    local rowPlace, rowHide, rowPage = Row(), Row(), Row()
+    local rowPlace, rowDone, rowHide, rowPage = Row(), Row(), Row(), Row()
 
     -- Sort: the column chosen by clicking its title, and a direction.
     local sortKey, sortDesc, sortBy = TableSort(db, "buy", BUY_COLUMNS, "price", Refilter)
 
 
 
-    local function HideBox(label, key, tip)
+    local function HideBox(row, label, key, tip)
         local cb = AceGUI:Create("CheckBox")
         cb:SetLabel(label)
         cb:SetRelativeWidth(HALF)
@@ -1195,10 +1195,34 @@ function UI:BuildBuy(container)
             GameTooltip:Show()
         end)
         cb:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-        rowHide:AddChild(cb)
+        row:AddChild(cb)
     end
-    HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
-    HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
+    HideBox(rowDone, "Hide done today by", "buyHideDone", "Hide writs turned in since the daily reset by the character chosen next to it. Unticked, they're marked \"done today\".")
+    HideBox(rowHide, "Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
+
+    -- Whose writs count as done today, e.g. your main's while you shop on a bank alt.
+    local others = CH.Alts:Others()
+    local doneList, doneOrder = { ME = "This character", ANY = "Any of my characters" }, { "ME" }
+    for _, o in ipairs(others) do
+        doneList[o.key] = CH.Alts.ColoredName(o.entry, true)
+        table.insert(doneOrder, o.key)
+    end
+    table.insert(doneOrder, "ANY")
+    if not doneList[db.buyDoneBy] then db.buyDoneBy = "ME" end
+    local doneBy = AceGUI:Create("Dropdown")
+    doneBy:SetRelativeWidth(HALF)
+    doneBy:SetList(doneList, doneOrder)
+    doneBy:SetValue(db.buyDoneBy)
+    doneBy:SetCallback("OnValueChanged", function(_, _, v) db.buyDoneBy = v; Refilter() end)
+    rowDone:AddChild(doneBy)
+    local function DoneToday(writID)
+        if db.buyDoneBy ~= "ANY" then return CH.Alts:DoneToday(db.buyDoneBy ~= "ME" and db.buyDoneBy or nil, writID) end
+        if CH.Alts:DoneToday(nil, writID) then return true end
+        for _, o in ipairs(others) do
+            if CH.Alts:DoneToday(o.key, writID) then return true end
+        end
+        return false
+    end
 
     -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
     local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
@@ -1259,7 +1283,7 @@ function UI:BuildBuy(container)
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
         local s = CH.Tracker:GetState(writID)
         if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end
-        return not (db.buyHideDone and s.status == STATUS.DONE)
+        return not (db.buyHideDone and DoneToday(writID))
     end, sortDesc, SortValue)
 
     local pages = math.max(1, math.ceil(#list / BUY_PAGE_SIZE))
@@ -1305,7 +1329,7 @@ function UI:BuildBuy(container)
     local first = (page - 1) * BUY_PAGE_SIZE + 1
     for i = first, math.min(first + BUY_PAGE_SIZE - 1, #list) do
         local e = list[i]
-        local done = not db.buyHideDone and CH.Tracker:GetState(e.writID).status == STATUS.DONE
+        local done = not db.buyHideDone and DoneToday(e.writID)
         table.insert(rows, {
             cells = BuyCells(e, done),
             onEnter = function(frame) ShowBuyTooltip({ frame = frame }, e) end,
