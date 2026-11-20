@@ -212,5 +212,27 @@ check("cashback off: net is the cost", not P.CashbackOn() and e.cashback == 0 an
       and abs(e.repPerGold - 75 / 1.4239) < 1e-9, (e.cashback, e.net))
 check("cashback off: pouch stats still known", P.PouchStats("JOURNEYMAN").opened == 11)
 
+# Waylaid Crates. Crate 10 (Apprentice, 5 favor): 1000 + the cheaper of 20 x 50 and 10 x 300 = 2000.
+# Crate 20 (uncommon Artisan, 40 favor): 5000 + 5 x 1000. Crate 30: no bundle priced. Crate 40: no price.
+g._load((ADDON / "Data" / "Crates.lua").read_text(encoding="utf-8"), "Data/Crates.lua")
+check("crate data: 30 crates", len(list(g.ns.Crates.keys())) == 30)
+lua.execute("""
+ns.Crates = {
+    [10] = { tier = "APPRENTICE", quality = 1, name = "A", fills = { { item = 11, count = 20 }, { item = 12, count = 10 } } },
+    [20] = { tier = "ARTISAN", quality = 2, name = "B", fills = { { item = 21, count = 5 } } },
+    [30] = { tier = "EXPERT", quality = 1, name = "C", fills = { { item = 31, count = 5 } } },
+    [40] = { tier = "EXPERT", quality = 1, name = "D", fills = { { item = 11, count = 1 } } },
+}
+prices = { [10] = 1000, [11] = 50, [12] = 300, [20] = 5000, [21] = 1000, [30] = 700 }
+""")
+e = P.GetCrateEstimate(10)
+check("crate: cheapest bundle", e.best.item == 11 and e.cost == 2000 and e.fills[2].cost == 3000, e.cost)
+check("crate: favor per gold", e.favor == 5 and e.favorPerGold == 25, (e.favor, e.favorPerGold))
+check("crate: uncommon gives double favor", P.GetCrateEstimate(20).favor == 40)
+e = P.GetCrateEstimate(30)
+check("crate without a priced bundle", e.cratePrice == 700 and e.cost is None and e.favorPerGold is None)
+check("crate without a price: none", P.GetCrateEstimate(40) is None)
+check("crate list", sorted(x.crateID for x in P.GetCrateList().values()) == [10, 20, 30])
+
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

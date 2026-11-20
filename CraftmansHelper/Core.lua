@@ -20,7 +20,7 @@ ns.PROFESSION_NAMES = {
     TAILORING = "Tailoring",
 }
 ns.TIERS = { "JOURNEYMAN", "EXPERT", "ARTISAN" }
-ns.TIER_NAMES = { JOURNEYMAN = "Journeyman", EXPERT = "Expert", ARTISAN = "Artisan" }
+ns.TIER_NAMES = { APPRENTICE = "Apprentice", JOURNEYMAN = "Journeyman", EXPERT = "Expert", ARTISAN = "Artisan" } -- Apprentice: crates only
 
 -- Reverse lookup: quest ID -> writ item ID.
 ns.WritByQuest = {}
@@ -53,6 +53,7 @@ local defaults = {
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
         buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
+        crateSort = "favor",       -- "Crates" table: sort column (crateSortDesc likewise)
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
     },
@@ -97,6 +98,7 @@ local HELP = {
     "/writs status - print a summary in chat",
     "/writs shopping - open the shopping list",
     "/writs buy - writs that are cheapest to buy on the Auction House",
+    "/writs crates - Waylaid Crates by Merchant's Favor per gold",
     "/writs settings - open the settings",
     "/writs minimap - show / hide the minimap button",
     "/writs resetpos - move the window and route tracker back to the middle of the screen",
@@ -130,6 +132,8 @@ function CH:SlashCommand(input)
             ((shown and not self.Route:IsActive()) and " (it appears once you plan a route)." or "."))
     elseif cmd == "buy" then
         self.UI:Show("buy")
+    elseif cmd == "crates" then
+        self.UI:Show("crates")
     elseif cmd == "settings" or cmd == "options" or cmd == "config" then
         self.UI:Show("settings")
     elseif cmd == "resetpos" or cmd == "reset" then

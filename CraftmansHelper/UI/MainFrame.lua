@@ -1345,6 +1345,87 @@ function UI:BuildBuy(container)
 end
 
 ---------------------------------------------------------------------------
+-- Tab: Crates
+---------------------------------------------------------------------------
+
+local CRATE_COLUMNS = {
+    { key = "name", title = "Name", width = 0.33 },
+    { key = "level", title = "Level", width = 0.14 },
+    { key = "price", title = "Price", width = 0.20 },
+    { key = "favor", title = "Favor/|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:2:0|t", width = 0.11,
+      sortName = "Merchant's Favor per gold", descFirst = true },
+    { key = "bundle", title = "Cheapest bundle", width = 0.21 },
+}
+
+local function ShowCrateTooltip(frame, e)
+    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    GameTooltip:SetItemByID(e.crateID)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Crate", ns.FormatMoneyIcons(e.cratePrice), 1, 0.82, 0, 1, 1, 1)
+    for _, f in ipairs(e.fills) do
+        local r, g, b = 1, 1, 1
+        if f == e.best then r, g, b = 0.13, 1, 0.13 end
+        GameTooltip:AddDoubleLine(string.format("%d %s", f.count, ItemName(f.item, f.name)),
+            f.cost and ns.FormatMoneyIcons(f.cost) or "no price", r, g, b, r, g, b)
+    end
+    if e.cost then
+        GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(e.cost), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Favor per gold", string.format("%s (%d Merchant's Favor)",
+            ns.FormatRepPerGold(e.favorPerGold), e.favor), 1, 0.82, 0, 1, 1, 1)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Shift-click to link the crate, Alt-click its cheapest bundle.", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+function UI:BuildCrates(container)
+    local db = CH.db.profile
+    container:SetLayout("Fill")
+    local scroll = CreateScroll(container, "crates")
+    if not ns.Prices.IsAvailable() then
+        AddLabel(scroll, "This tab needs Auction House prices from Auctionator or TradeSkillMaster.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
+        return
+    end
+
+    local sortKey, desc, sortBy = TableSort(db, "crate", CRATE_COLUMNS, "favor", function() self:Redraw() end)
+    local rows = {}
+    for _, e in ipairs(ns.Prices.GetCrateList()) do
+        local c = ns.Crates[e.crateID]
+        local name = ItemName(e.crateID, "Waylaid Crate: " .. c.name)
+        local bundle = e.best and string.format("%d %s", e.best.count, ItemName(e.best.item, e.best.name))
+        table.insert(rows, {
+            cells = {
+                name,
+                C(COLOR.dim, ns.TIER_NAMES[c.tier]),
+                e.cost and ns.FormatMoneyIcons(e.cost) or (ns.FormatMoneyIcons(e.cratePrice) .. " + ?"),
+                e.cost and C(COLOR.ready, ns.FormatRepPerGold(e.favorPerGold)) or C(COLOR.inbags, "no price"),
+                bundle and C(COLOR.dim, bundle) or C(COLOR.dim, "-"),
+            },
+            sort = { name = name:lower(), level = ns.TIER_NAMES[c.tier], price = e.cost, favor = e.favorPerGold,
+                     bundle = bundle and bundle:lower(), tie = name:lower() },
+            onEnter = function(frame) ShowCrateTooltip(frame, e) end,
+            onClick = function()
+                local id = IsAltKeyDown() and e.best and e.best.item or (IsModifiedClick("CHATLINK") and e.crateID)
+                if not id then return end
+                local _, link = C_Item.GetItemInfo(id)
+                if link then InsertLink(link) end
+            end,
+        })
+    end
+    SortRows(rows, sortKey, desc)
+
+    if #rows == 0 then
+        AddLabel(scroll, "No Waylaid Crates with an Auction House price yet.", GameFontHighlight)
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
+        return
+    end
+    AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the crate plus its cheapest bundle."),
+        GameFontHighlightSmall)
+    AddTable(scroll, "crates", CRATE_COLUMNS, rows, sortKey, desc, sortBy)
+end
+
+---------------------------------------------------------------------------
 -- Tab: Settings
 ---------------------------------------------------------------------------
 
@@ -1586,6 +1667,7 @@ function UI:Create()
         { text = "Route", value = "route" },
         { text = "Shopping", value = "shopping" },
         { text = "Buy Writs", value = "buy" },
+        { text = "Crates", value = "crates" },
         { text = "All Writs", value = "all" },
         { text = "Settings", value = "settings" },
     })
@@ -1601,6 +1683,8 @@ function UI:Create()
             self:BuildShopping(container)
         elseif group == "buy" then
             self:BuildBuy(container)
+        elseif group == "crates" then
+            self:BuildCrates(container)
         elseif group == "settings" then
             self:BuildSettings(container)
         else
