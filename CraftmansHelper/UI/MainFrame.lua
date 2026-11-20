@@ -1378,6 +1378,36 @@ local function ShowCrateTooltip(frame, e)
     GameTooltip:Show()
 end
 
+-- What a Forged Delivery Receipt's reputation costs: the cheapest empty crate, and the receipt's
+-- Merchant's Favor at the cheapest way to earn it.
+local function AddReceiptBox(parent)
+    local r = ns.Prices.GetReceiptEstimate()
+    if not r then return end
+    local box = AceGUI:Create("InlineGroup")
+    box:SetFullWidth(true)
+    box:SetLayout("Flow")
+    box:SetTitle(string.format("Forged Delivery Receipt (from Friendly): %d rep, %s rep/g", r.rep,
+        ns.FormatRepPerGold(r.repPerGold)))
+    -- Name on the left, price right-aligned, like a tooltip's double line.
+    local function Line(left, right)
+        for i, text in ipairs({ left, right }) do
+            local l = AceGUI:Create("Label")
+            l:SetRelativeWidth(i == 1 and 0.74 or 0.25)
+            l:SetFontObject(GameFontHighlight)
+            l:SetJustifyH(i == 1 and "LEFT" or "RIGHT")
+            l:SetText(text)
+            box:AddChild(l)
+        end
+    end
+    local id, fc = r.crate.crateID, r.favorCrate
+    Line(ItemName(id, "Waylaid Crate: " .. ns.Crates[id].name), ns.FormatMoneyIcons(r.crate.cratePrice))
+    Line(string.format("Forged Delivery Receipt (%d Merchant's Favor)", ns.RECEIPT_FAVOR), ns.FormatMoneyIcons(r.favorCost))
+    AddLabel(box, C(COLOR.dim, string.format("Favor from filling %s with %d %s", ns.Crates[fc.crateID].name,
+        fc.best.count, ItemName(fc.best.item, fc.best.name))), GameFontHighlightSmall)
+    Line("Total", ns.FormatMoneyIcons(r.cost))
+    parent:AddChild(box)
+end
+
 function UI:BuildCrates(container)
     local db = CH.db.profile
     container:SetLayout("Fill")
@@ -1422,6 +1452,7 @@ function UI:BuildCrates(container)
     end
     AddLabel(scroll, PriceSourceText() .. C(COLOR.dim, "  Price = the crate plus its cheapest bundle."),
         GameFontHighlightSmall)
+    AddReceiptBox(scroll)
     AddTable(scroll, "crates", CRATE_COLUMNS, rows, sortKey, desc, sortBy)
 end
 

@@ -4,6 +4,8 @@ local _, ns = ...
 
 -- Merchant's Favor for a common crate, by level.
 ns.CRATE_FAVOR = { APPRENTICE = 5, JOURNEYMAN = 10, EXPERT = 15, ARTISAN = 20 }
+-- A Forged Delivery Receipt costs this much favor; on any empty crate, it turns in for this reputation.
+ns.RECEIPT_FAVOR, ns.RECEIPT_REP = 15, 50
 
 ns.Crates = {
     [248682] = { tier = "APPRENTICE", quality = 1, name = "Apprentice Herbs", fills = {

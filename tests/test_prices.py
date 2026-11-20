@@ -234,5 +234,12 @@ check("crate without a priced bundle", e.cratePrice == 700 and e.cost is None an
 check("crate without a price: none", P.GetCrateEstimate(40) is None)
 check("crate list", sorted(x.crateID for x in P.GetCrateList().values()) == [10, 20, 30])
 
+# Receipt: cheapest empty crate 30 (700) + 15 favor at crate 20's 10000 / 40 = 250 a favor: 4450 for 50 rep.
+r = P.GetReceiptEstimate()
+check("receipt", r.crate.crateID == 30 and r.favorCrate.crateID == 20 and r.favorCost == 3750 and r.cost == 4450
+      and r.rep == 50 and abs(r.repPerGold - 50 / 0.445) < 1e-9, (r.cost, r.rep))
+lua.execute("prices[11] = nil; prices[12] = nil; prices[21] = nil")
+check("receipt without a priced bundle: none", P.GetReceiptEstimate() is None)
+
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

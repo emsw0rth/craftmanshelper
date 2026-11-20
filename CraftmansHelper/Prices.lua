@@ -346,6 +346,26 @@ function Prices.GetCrateList()
     return list
 end
 
+-- A Forged Delivery Receipt on the cheapest empty crate, its Merchant's Favor counted at the cheapest
+-- way to earn it, or nil without crate prices: { crate = the empty crate's estimate, favorCrate = the
+-- estimate that earns favor cheapest, favorCost, cost = crate + favor, rep, repPerGold }
+function Prices.GetReceiptEstimate()
+    local crate, favorCrate
+    for _, e in ipairs(Prices.GetCrateList()) do
+        if not crate or e.cratePrice < crate.cratePrice
+            or (e.cratePrice == crate.cratePrice and e.crateID < crate.crateID) then
+            crate = e
+        end
+        if e.cost and (not favorCrate or e.cost / e.favor < favorCrate.cost / favorCrate.favor) then favorCrate = e end
+    end
+    if not (crate and favorCrate) then return nil end
+    local favorCost = favorCrate.cost / favorCrate.favor * ns.RECEIPT_FAVOR
+    local rep = math.floor(ns.RECEIPT_REP * (1 + ns.DIPLOMAT_STEP * ns.DiplomatRank()) + 1e-6)
+    local cost = crate.cratePrice + favorCost
+    return { crate = crate, favorCrate = favorCrate, favorCost = favorCost, cost = cost, rep = rep,
+             repPerGold = Prices.RepPerGold(rep, cost) }
+end
+
 -- Money with the game's gold/silver/copper coin icons, like the "Auction" tooltip line.
 -- Falls back to plain text (FormatMoney) outside the client.
 function ns.FormatMoneyIcons(copper)

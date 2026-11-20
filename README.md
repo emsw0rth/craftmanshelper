@@ -35,6 +35,8 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   - **Hide done today by** this character, one of your others, or any of them.
 - **Crates** tab: the Waylaid Crates on the Auction House by Merchant's Favor per gold, counting the crate and the
   cheapest bundle that fills it.
+  - Above it, what a Forged Delivery Receipt's reputation costs: the cheapest empty crate, and the receipt's
+    Merchant's Favor at the cheapest way to earn it.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
