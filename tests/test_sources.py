@@ -35,7 +35,7 @@ C_Item = { GetItemCount = function() return 0 end }
 inLog = {}
 markers = { poi = {}, waypoint = {}, questMap = {} }
 C_QuestLog = {
-    IsQuestFlaggedCompleted = function() return false end,
+    IsQuestFlaggedCompleted = function(q) return flagged and flagged[q] or false end,
     GetLogIndexForQuestID = function(q) return inLog[q] end,
     GetQuestsOnMap = function(map)
         local out = {}
@@ -151,6 +151,13 @@ lua.execute("inLog[2000] = 1; markers.questMap[2000] = 1446; markers.poi[2000] =
 T.Refresh(T)
 rec = g.CH.db["global"].learned[2000]
 check("refresh records marker", rec is not None and rec.source == "marker" and abs(rec.x - 30) < 1e-9)
+
+# Refresh saves what the server says is done today, until the reset; a current entry is kept.
+lua.execute("CH.db.char.completed = { [2000] = 5000 }; flagged = { [1000] = true, [2000] = true }")
+T.Refresh(T)
+done = g.CH.db.char.completed
+check("refresh saves server completions", done[1000] == 1000 + 86400 and done[2000] == 5000, (done[1000], done[2000]))
+lua.execute("CH.db.char.completed = {}; flagged = nil")
 
 print()
 if failures:
