@@ -193,6 +193,68 @@ check("hearth: no Hearthstone in bags", H.GetOption(H) is None)
 lua.execute("count = 1; CH.db.profile.useHearth = false")
 check("hearth: setting off", H.GetOption(H) is None)
 
+# Mage teleports in the graph: from anywhere to where they land, but not within that city.
+TP = "{ speed = 7, teleports = { { spell = 1, name = 'Port', map = 1440, x = 50, y = 50 } } }"
+graph = T.NewGraph(lua.eval(TP))
+start, stop = T.AddNode(graph, g.P(1437, 50, 50)), T.AddNode(graph, g.P(1440, 55, 50))
+s = T.Search(graph, start)
+check("teleport: across continents", kinds(T.Steps(s, stop)) == ["teleport", "walk"], kinds(T.Steps(s, stop)))
+check("teleport: time", abs(s.seconds[stop.gi] - (30 + 50 * 1.3 / 7)) < 1e-6, s.seconds[stop.gi])
+check("teleport: directions", T.Describe(T.Steps(s, stop)[1]) == "Teleport to Port")
+graph = T.NewGraph(lua.eval(TP))
+start, stop = T.AddNode(graph, g.P(1441, 0, 50)), T.AddNode(graph, g.P(1440, 55, 50))
+s = T.Search(graph, start)
+check("teleport: quicker than riding there", kinds(T.Steps(s, stop))[0] == "teleport", kinds(T.Steps(s, stop)))
+graph = T.NewGraph(lua.eval(TP))
+start, stop = T.AddNode(graph, g.P(1440, 0, 0)), T.AddNode(graph, g.P(1440, 90, 50))
+s = T.Search(graph, start)
+check("teleport: not within its own city", kinds(T.Steps(s, stop)) == ["walk"], kinds(T.Steps(s, stop)))
+graph = T.NewGraph(lua.eval("{ speed = 7 }"))
+start, stop = T.AddNode(graph, g.P(1437, 50, 50)), T.AddNode(graph, g.P(1440, 55, 50))
+check("teleport: none without the option", kinds(T.Steps(T.Search(graph, start), stop)) == ["travel"])
+
+# Teleports.lua: known spells, runes, setting, learned arrival spot.
+lua.execute("""
+runes = 0
+C_Item = { GetItemCount = function(id) return id == 17031 and runes or 0 end }
+CH.db.global = {}
+CH.db.profile.useTeleports = true
+timers = {}
+C_Timer = { After = function(_, fn) table.insert(timers, fn) end }
+""")
+g._load((ADDON / "Teleports.lua").read_text(encoding="utf-8"), "Teleports.lua")
+TPm = g.CH.Teleports
+check("teleports: none known", len(TPm.GetKnown(TPm)) == 0 and TPm.GetOptions(TPm) is None)
+lua.execute("spells[3567] = true; spells[3563] = true")
+known = TPm.GetKnown(TPm)
+check("teleports: known spells", [known[i].name for i in range(1, len(known) + 1)] == ["Undercity", "Orgrimmar"],
+      [known[i].name for i in range(1, len(known) + 1)])
+check("teleports: no rune, no teleports", TPm.GetOptions(TPm) is None)
+lua.execute("runes = 3")
+check("teleports: with runes", TPm.GetOptions(TPm) is not None and TPm.Runes(TPm) == 3)
+lua.execute("runes = 0; spells[1225503] = true")
+check("teleports: Reagent Economy needs no runes", TPm.GetOptions(TPm) is not None and TPm.Runes(TPm) == float("inf"))
+lua.execute("CH.db.profile.useTeleports = false")
+check("teleports: setting off", TPm.GetOptions(TPm) is None)
+lua.execute("CH.db.profile.useTeleports = true")
+# Arrival: recorded once you're in the city (a retry while the loading screen is still up).
+lua.execute("""
+here = { map = 1437, x = 0.5, y = 0.5 }
+C_Map.GetBestMapForUnit = function() return here.map end
+C_Map.GetPlayerMapPosition = function() return { GetXY = function() return here.x, here.y end } end
+""")
+TPm.OnSpellcast(TPm, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 3567)
+lua.execute("local fn = table.remove(timers, 1); fn()")
+check("teleports: not recorded outside the city", g.CH.db["global"].teleports[3567] is None)
+lua.execute("here = { map = 1454, x = 0.47, y = 0.62 }; local fn = table.remove(timers, 1); fn()")
+spot = g.CH.db["global"].teleports[3567]
+check("teleports: arrival recorded", spot is not None and spot.map == 1454 and abs(spot.x - 47) < 1e-6)
+org = [k for k in TPm.GetKnown(TPm).values() if k.spell == 3567][0]
+check("teleports: learned spot used", abs(org.x - 47) < 1e-6 and abs(org.y - 62) < 1e-6, (org.x, org.y))
+TPm.OnSpellcast(TPm, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 133)
+check("teleports: other spells ignored", len(g.timers) == 0)
+lua.execute("spells = {}; C_Item = nil")
+
 # Faction links: a Horde player never boards an Alliance boat, and vice versa.
 lua.execute("""ns.Transports = {
     { kind = 'boat', faction = 'A', from = { map = 1437, x = 5, y = 60 }, to = { map = 1438, x = 70, y = 55 } },

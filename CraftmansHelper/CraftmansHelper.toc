@@ -32,6 +32,7 @@ Solver.lua
 Travel.lua
 FlightPaths.lua
 Hearth.lua
+Teleports.lua
 Route.lua
 Tooltips.lua
 RecipeMarks.lua

@@ -1,5 +1,5 @@
 -- Travel-time model for the route planner: walking/riding, flight paths, boats,
--- zeppelins and the tram, as a graph searched with Dijkstra.
+-- zeppelins, the tram and mage teleports, as a graph searched with Dijkstra.
 --
 -- Nodes are places ({ map, x, y } plus world coordinates): flight masters the
 -- player can use, both ends of every transport link, the crossings between zones
@@ -10,6 +10,8 @@
 --     the same landmass.)
 --   * flight: between any two usable flight masters on the same continent
 --   * transport: between the two ends of a boat / zeppelin / tram link
+--   * teleport: from anywhere to where a mage teleport the character knows lands (not from
+--     inside that city)
 --   * fallback: to places you can't ride to and have no known link to ("travel to ..."),
 --     so a stop is never unreachable because data is missing.
 -- Only C_Map (for world coordinates) touches the WoW API, so this runs in tests.
@@ -28,6 +30,7 @@ Travel.FLIGHT_HOP_SECONDS = 8   -- per hop when flown lengths are known (a multi
 Travel.GROUND_DETOUR = 1.3      -- roads and terrain vs straight line, within one zone
 Travel.GROUND_DETOUR_ZONES = 1.6 -- between zones: borders are mostly mountains with a few passes
 Travel.FALLBACK_SECONDS = 900   -- reaching another landmass with no known link
+Travel.TELEPORT_SECONDS = 30    -- mage teleport: 10 s cast plus the loading screen
 
 -- Maps that can't be reached on foot from the rest of their continent.
 local ISLANDS = { [1438] = "teldrassil", [1457] = "teldrassil", [2548] = "riverglades", [2521] = "zephras" }
@@ -178,10 +181,17 @@ Travel.FactionOK = FactionOK
 
 -- opts: faction = "A" | "H" | nil, speed = yards/second,
 --       knowsFlight = function(npcID, node) -> bool (nil: every flight master counts),
---       hasItem = function(itemID) -> bool for keys to gates (nil: the character's bags)
+--       hasItem = function(itemID) -> bool for keys to gates (nil: the character's bags),
+--       teleports = { { spell, name, map, x, y }, ... } mage teleports to use (nil: none)
 function Travel.NewGraph(opts)
     opts = opts or {}
-    local graph = { nodes = {}, speed = opts.speed or Travel.SPEED.foot }
+    local graph = { nodes = {}, speed = opts.speed or Travel.SPEED.foot, teleports = {} }
+
+    for _, t in ipairs(opts.teleports or {}) do
+        local node = Travel.AddNode(graph, { kind = "teleport", spell = t.spell, name = t.name,
+                                             map = t.map, x = t.x, y = t.y })
+        if node then table.insert(graph.teleports, node) end
+    end
 
     -- Crossings between zones: the ones open to you (your faction's capitals, keys you carry).
     if ns.Crossings then
@@ -252,6 +262,10 @@ local function Edges(graph, u, visit)
         end
     end
     for _, link in ipairs(u.links) do visit(link.to, link.seconds, link.kind) end
+    -- Mage teleports work from anywhere; not worth it within the city they take you to.
+    for _, t in ipairs(graph.teleports) do
+        if t ~= u and not Travel.SharesZone(u, t) then visit(t, Travel.TELEPORT_SECONDS, "teleport") end
+    end
 end
 
 -- Shortest travel times from `source` to every node: { seconds = {[index] = s}, via = {[index] = edge} }.
@@ -316,6 +330,8 @@ function Travel.Describe(step)
         local where = string.format("%s %.1f, %.1f", PlaceName(step.to), step.to.x, step.to.y)
         if not into then return string.format("Ride to %s", where) end
         return string.format("Ride into %s%s (%s)", intoName or "?", step.to.note and (", " .. step.to.note) or "", where)
+    elseif step.kind == "teleport" then
+        return string.format("Teleport to %s", step.to.name or PlaceName(step.to))
     elseif step.kind == "hearth" then
         return string.format("Use your Hearthstone (%s)", step.to.name or PlaceName(step.to))
     elseif step.kind ~= "walk" then

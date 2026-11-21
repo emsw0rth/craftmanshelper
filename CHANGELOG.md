@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Mage teleports in routes:** routes for mages use Teleport: Stormwind, Ironforge, Darnassus, Orgrimmar,
+  Undercity and Thunder Bluff whenever that's quicker, as often as it helps, for example "Teleport to Orgrimmar".
+  - Only the teleports your character knows, and only with a Rune of Teleportation in your bags. If a route
+    teleports more often than you have runes, it tells you.
+  - Where each teleport lands is recorded the first time you cast it.
+  - Turn it off with **Settings → Use mage teleports** (shown to characters that know a teleport).
+
 ## 1.10.3
 
 - **Fixed:** routes only ride into another zone where you really can. They go through the roads, passes, tunnels and

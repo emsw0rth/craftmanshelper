@@ -869,7 +869,8 @@ function UI:BuildRoute(container)
         AddLabel(scroll, "Plan a route to visit every turn-in for the writs you can deliver right now: writs " ..
             "that are ready, plus writs in your bags that you have the item for (start them before you arrive).\n\n" ..
             "Stops are ordered by the quickest way round from where you are, using the flight paths you know, " ..
-            "boats and zeppelins, across both continents, and your Hearthstone when it saves time.\n\n" ..
+            "boats and zeppelins, across both continents, your mage teleports and your Hearthstone when it " ..
+            "saves time.\n\n" ..
             "The arrow moves on to the next stop each time you deliver.", GameFontHighlight)
         if CH.FlightPaths:Count() == 0 then
             AddLabel(scroll, "\n" .. C(COLOR.inbags, "Open a flight master's map once on each continent, so the " ..
@@ -1433,6 +1434,21 @@ function UI:BuildSettings(container)
     AddLabel(scroll, spot and C(COLOR.dim, "Hearthstone: " .. spot.name .. " (location learned).")
         or C(COLOR.inbags, "Hearthstone location not learned yet: use your Hearthstone once, or set it at an innkeeper."),
         GameFontHighlightSmall)
+    -- Mage teleports: only shown to characters that know one.
+    local teleports = CH.Teleports:GetKnown()
+    if #teleports > 0 then
+        AddCheckBox(scroll, "Use mage teleports",
+            "The route teleports to a city whenever that's quicker. Each teleport uses a Rune of Teleportation.",
+            db.useTeleports, function(v) db.useTeleports = v end)
+        local names = {}
+        for _, t in ipairs(teleports) do table.insert(names, t.name) end
+        local runes = CH.Teleports:Runes()
+        local runeText = runes == math.huge and ""
+            or string.format(" (%d Rune%s of Teleportation)", runes, runes == 1 and "" or "s")
+        AddLabel(scroll, runes > 0 and C(COLOR.dim, "Teleports: " .. table.concat(names, ", ") .. runeText .. ".")
+            or C(COLOR.inbags, "No Rune of Teleportation in your bags: routes don't use your teleports."),
+            GameFontHighlightSmall)
+    end
     local fp = CH.FlightPaths:Count()
     AddLabel(scroll, fp > 0 and C(COLOR.dim, string.format("Flight paths known: %d.", fp))
         or C(COLOR.inbags, "No flight paths learned yet: open a flight master's map once on each continent."),

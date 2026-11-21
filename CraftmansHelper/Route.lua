@@ -1,6 +1,6 @@
 -- Delivery route: every writ you can hand in right now, grouped into stops
 -- (one per turn-in spot) and ordered by ns.SolvePath on travel time (Travel.lua):
--- flight paths you know, boats and zeppelins included, across both continents.
+-- flight paths you know, boats, zeppelins and mage teleports included, across both continents.
 local _, ns = ...
 local CH = ns.CH
 local STATUS = ns.STATUS
@@ -54,15 +54,16 @@ local function KnowsFlight(npcID)
 end
 
 -- The non-walking parts of the way to a stop, in order: crossings into another zone, flights,
--- boats, zeppelins, the tram and "travel to ..." fallbacks. `board` is where the arrow points
--- first (the crossing, flight master or dock); fallbacks have none.
+-- boats, zeppelins, the tram, teleports and "travel to ..." fallbacks. `board` is where the arrow
+-- points first (the crossing, flight master or dock); fallbacks, teleports and the Hearthstone have none.
 local function BuildVia(steps)
     local via = {}
     for _, step in ipairs(steps or {}) do
         local text = ns.Travel.Describe(step)
         if text then
-            -- Fallbacks and the Hearthstone have no place to walk to first.
-            local board = (step.kind ~= "travel" and step.kind ~= "hearth") and step.from or nil
+            -- Fallbacks, teleports and the Hearthstone have no place to walk to first.
+            local cast = step.kind == "travel" or step.kind == "hearth" or step.kind == "teleport"
+            local board = not cast and step.from or nil
             local into
             if step.kind == "cross" then
                 board, into = step.to, ns.Travel.CrossInto(step.from, step.to)
@@ -126,8 +127,10 @@ function Route:Build()
         end
     end
 
-    -- Travel graph: flight paths you know, boats, zeppelins, plus you and every stop.
-    local graph = ns.Travel.NewGraph({ faction = faction, speed = ns.Travel.GroundSpeed(), knowsFlight = KnowsFlight })
+    -- Travel graph: flight paths you know, boats, zeppelins, mage teleports, plus you and every stop.
+    local teleports = CH.Teleports and CH.Teleports:GetOptions()
+    local graph = ns.Travel.NewGraph({ faction = faction, speed = ns.Travel.GroundSpeed(), knowsFlight = KnowsFlight,
+                                       teleports = teleports })
     local start = PlayerPosition()
     if start then start = ns.Travel.AddNode(graph, start) end
 
@@ -245,13 +248,23 @@ function Route:Plan(restoring)
         self.ticker = self:ScheduleRepeatingTimer("Tick", TICK_SECONDS)
     end
 
-    local writs = 0
-    for _, stop in ipairs(route.stops) do writs = writs + #stop.writs end
+    local writs, teleports = 0, 0
+    for _, stop in ipairs(route.stops) do
+        writs = writs + #stop.writs
+        for _, e in ipairs(stop.via or {}) do
+            if e.kind == "teleport" then teleports = teleports + 1 end
+        end
+    end
     SetSaved(true)
     CH:Print(string.format("Route %s: %d writ%s at %d stop%s, about %d min.%s", restoring and "restored" or "planned",
         writs, writs == 1 and "" or "s",
         #route.stops, #route.stops == 1 and "" or "s", math.max(1, math.floor((route.seconds or 0) / 60 + 0.5)),
         CH.Nav:HasTomTom() and "" or " Install TomTom to see every stop on the map."))
+    local runes = teleports > 0 and CH.Teleports and CH.Teleports:Runes() or math.huge
+    if runes < teleports then
+        CH:Print(string.format("The route teleports %d times, but you only carry %d Rune%s of Teleportation.",
+            teleports, runes, runes == 1 and "" or "s"))
+    end
     self:SendMessage(ns.MSG_ROUTE)
     return route
 end
@@ -324,6 +337,7 @@ local function Passed(e, here)
         if d and d <= HEARTH_ARRIVE_YARDS then return true end
     end
     if e.kind == "cross" then return e.into ~= nil and here.zone == e.into end
+    if e.kind == "teleport" then return here.zone == e.to.zone end
     return e.from.land ~= e.to.land and here.land == e.to.land
 end
 
