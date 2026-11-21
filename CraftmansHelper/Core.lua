@@ -54,6 +54,7 @@ local defaults = {
         buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
+        useTeleports = true,       -- let the route planner use the mage teleports you know (Teleports.lua)
     },
     char = {
         -- [questID] = server time of the daily reset after which the completion expires.
@@ -72,6 +73,8 @@ local defaults = {
         characters = {},
         -- Gold from opened Coin Pouches: [pouch itemID] = { n, total, min, max } (Pouches.lua)
         pouches = {},
+        -- Where each mage teleport lands, recorded on arrival: [spellID] = { map, x, y } (Teleports.lua)
+        teleports = {},
     },
 }
 

@@ -290,6 +290,50 @@ check("hearth: passed at the inn", Route.viaIndex == 2)
 Route.Clear(Route)
 lua.execute("CH.Hearth = nil")
 
+# --- Mage teleports -----------------------------------------------------------------
+# You in the Wetlands, stops in Ashenvale and Duskwood with no known way between them
+# (fallbacks), and a teleport to Ashenvale: used as often as it helps.
+reset()
+lua.execute("""
+writ(1, "ready", 1440, 50, 50, "Ash", "AH")
+player.map, player.x, player.y = 1437, 0.5, 0.5
+runes = 5
+CH.Teleports = { GetOptions = function() return { { spell = 1, name = "Port", map = 1440, x = 52, y = 50 } } end,
+                 Runes = function() return runes end }
+""")
+route = Route.Build(Route)
+ash = route.stops[1]
+kinds = [ash.steps[i].kind for i in range(1, len(ash.steps) + 1)]
+check("teleport: used instead of the fallback", kinds == ["teleport", "walk"], kinds)
+check("teleport: directions", ash.via[1].text == "Teleport to Port", ash.via[1].text)
+check("teleport: no waypoint for the cast", ash.via[1].board is None)
+check("teleport: route time", route.seconds < 60, route.seconds)
+
+lua.execute("writ(2, 'ready', 1431, 50, 50, 'Dusk', 'AH')")
+route = Route.Build(Route)
+check("teleport: back to the stop after the other continent", stop_names(route) == ["Dusk", "Ash"]
+      and route.stops[2].steps[1].kind == "teleport", stop_names(route))
+
+# Following: the teleport step is passed once you're in the city.
+lua.execute("states = {}; writ(1, 'ready', 1440, 50, 50, 'Ash', 'AH')")
+Route.Plan(Route)
+check("teleport: arrow on the stop", same(g.nav.arrow, Route.GetCurrent(Route).handle))
+Route.Tick(Route, place(1437, 50, 50))
+check("teleport: not passed before casting", Route.viaIndex == 1)
+Route.Tick(Route, place(1440, 30, 30))
+check("teleport: passed on arrival", Route.viaIndex == 2)
+Route.Clear(Route)
+
+lua.execute("printed = {}; runes = 0")
+Route.Plan(Route)
+check("teleport: warns when runes run short",
+      any("Rune" in str(p) for p in g.printed.values()), list(g.printed.values()))
+lua.execute("printed = {}; runes = 1")
+Route.Plan(Route)
+check("teleport: no warning with enough runes", not any("Rune" in str(p) for p in g.printed.values()))
+Route.Clear(Route)
+lua.execute("CH.Teleports = nil")
+
 # Back to the three-stop set used below.
 reset()
 lua.execute("""

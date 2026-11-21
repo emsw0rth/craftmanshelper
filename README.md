@@ -13,7 +13,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
   - Stops are ordered by travel time across both continents, using the flight paths the character knows, boats,
-    zeppelins, the Deeprun Tram and, once, the Hearthstone when it saves time.
+    zeppelins, the Deeprun Tram, mage teleports and, once, the Hearthstone when it saves time.
   - Each stop comes with directions ("Fly from … to …", "Take the boat from … to …"). The arrow (TomTom, or the
     game's map pin) points at the flight master or dock first, then at the NPC, and moves on as you travel and
     deliver.
@@ -93,6 +93,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Travel.lua` | Travel-time graph (riding, flights, boats, zeppelins, tram) and shortest paths |
 | `CraftmansHelper/FlightPaths.lua` | Learns the character's known flight paths when a flight map is opened |
 | `CraftmansHelper/Hearth.lua` | Learns where the Hearthstone takes you; cooldown |
+| `CraftmansHelper/Teleports.lua` | Mage teleports the character knows, Runes of Teleportation, where each one lands |
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, orders them by travel time, directions, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
@@ -141,6 +142,9 @@ skycutter / tram link, the player and the stops, and runs Dijkstra between them.
 - Boats, zeppelins and skycutters: 4 minutes including the wait; the tram 2 minutes. Links are one-way
   (some boats sail a loop).
 - Hearthstone: 30 s, used at most once, only where it's off cooldown and saves at least a minute.
+- Mage teleports: 30 s, from anywhere (except the city they lead to), as often as they save time. Only the
+  teleports the character knows, and only with a Rune of Teleportation in the bags (or the Legacy perk Reagent
+  Economy). Each one lands by the city's portal trainer until the first cast records the real arrival point.
 - Riding into another zone goes through a crossing: a road, pass, tunnel or gate (`Data/Crossings.lua`, collected
   in-game). Each one is a direction ("Ride into Tanaris (Thousand Needles 74.9, 93.3)") with the arrow on it. From
   Thousand Needles, Un'Goro Crater is reached through Tanaris. Capital gates are for their own faction, and the
