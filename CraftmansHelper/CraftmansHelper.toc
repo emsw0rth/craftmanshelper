@@ -13,6 +13,7 @@
 embeds.xml
 
 Data\Writs.lua
+Data\Crates.lua
 Data\TurnIns.lua
 Data\FlightMasters.lua
 Data\Transports.lua

@@ -36,6 +36,11 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
   and NPC, and hide writs you carry or have done today. Shows when Auctionator or SnapPrice last did a full scan.
   - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
+  - **Hide done today by** this character, one of your others, or any of them.
+- **Crates** tab: the Waylaid Crates on the Auction House by Merchant's Favor per gold, counting the crate and the
+  cheapest bundle that fills it.
+  - Above it, what a Forged Delivery Receipt's reputation costs: the cheapest empty crate, and the receipt's
+    Merchant's Favor at the cheapest way to earn it.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
@@ -60,7 +65,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
-`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs crates`, `/writs settings`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
 
 ## Install (development)
 
@@ -77,6 +82,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/CraftmansHelper.toc` | Addon manifest |
 | `CraftmansHelper/Libs/` | Embedded Ace3 (LibStub, CallbackHandler, AceAddon/Event/Timer/Bucket/DB/Console/GUI) |
 | `CraftmansHelper/Data/Writs.lua` | All 150 writs: writ item ID → quest, tier, professions, required item, count, turn-in key |
+| `CraftmansHelper/Data/Crates.lua` | Waylaid Crates → level, quality and the bundles that fill them |
 | `CraftmansHelper/Data/TurnIns.lua` | Turn-in NPCs → zone (uiMapID) and coordinates where known |
 | `CraftmansHelper/Data/FlightMasters.lua` | Flight masters with position and faction (generated from QuestieDB) |
 | `CraftmansHelper/Data/Crossings.lua` | Where you ride from one zone into the next: roads, passes, tunnels, gates (collected in-game) |
