@@ -82,7 +82,9 @@ local function Marker(row)
 end
 
 -- Shows or hides the marker on a row. label: the row's name text, the marker goes right after it.
-function Marks.Mark(row, itemID, label)
+-- after: a text shown right after the label (the profession window's "[3]" you can craft);
+-- the marker goes after it instead.
+function Marks.Mark(row, itemID, label, after)
     if not row then return end
     if not (itemID and On()) then
         if row.craftmansHelperMark then row.craftmansHelperMark:Hide() end
@@ -91,7 +93,10 @@ function Marks.Mark(row, itemID, label)
     local m = Marker(row)
     m.itemID = itemID
     m:ClearAllPoints()
-    if label and label.GetStringWidth then
+    local afterText = after and after.IsShown and after:IsShown() and after.GetText and after:GetText()
+    if afterText and afterText ~= "" then
+        m:SetPoint("LEFT", after, "LEFT", (after:GetStringWidth() or 0) + 3, 0)
+    elseif label and label.GetStringWidth then
         local width = label:GetStringWidth() or 0
         local room = label.GetWidth and label:GetWidth() or 0
         if room > 0 and width > room then width = room end
@@ -150,7 +155,7 @@ local function RecipeRow(row, node)
     local data = node and node.GetData and node:GetData()
     local info = data and data.recipeInfo
     local itemID = info and Marks.RecipeItem(info.recipeID, info.name)
-    Marks.Mark(row, itemID, row.Label or row.Text or row.name)
+    Marks.Mark(row, itemID, row.Label or row.Text or row.name, row.Count)
 end
 Marks.RecipeRow = RecipeRow
 

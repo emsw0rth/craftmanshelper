@@ -1,5 +1,5 @@
--- Auction House price estimates for writ items, from Auctionator or TradeSkillMaster
--- (both optional; "AUTO" uses whichever is installed, Auctionator first).
+-- Auction House price estimates for writ items, from Auctionator, TradeSkillMaster or SnapPrice
+-- (all optional; "AUTO" uses whichever is installed, in that order).
 local ADDON_NAME, ns = ...
 
 local Prices = {}
@@ -77,12 +77,28 @@ function Prices.CashbackOn()
     return not (db and db.profile and db.profile.cashback == false)
 end
 
+-- Average copper in the coin pouch a writ's turn-in gives (whatever the Settings say).
+function Prices.PouchGold(writID)
+    local w = ns.Writs[writID]
+    local stats = w and Prices.PouchStats(w.tier)
+    return stats and math.floor(stats.average + 0.5) or 0
+end
+
 -- Copper you get back from the coin pouch for turning in a writ (0 with cashback off).
 function Prices.Cashback(writID)
-    local w = ns.Writs[writID]
-    if not (w and Prices.CashbackOn()) then return 0 end
-    local stats = Prices.PouchStats(w.tier)
-    return stats and math.floor(stats.average + 0.5) or 0
+    if not Prices.CashbackOn() then return 0 end
+    return Prices.PouchGold(writID)
+end
+
+-- Every pouch opened on your account: { opened, total (copper) }.
+function Prices.PouchTotals()
+    local out = { opened = 0, total = 0 }
+    for itemID, r in pairs(PouchLog()) do
+        if ns.POUCH_TIER[itemID] then
+            out.opened, out.total = out.opened + (r.n or 0), out.total + (r.total or 0)
+        end
+    end
+    return out
 end
 
 -- Reputation per gold for a net cost; math.huge when the pouch pays it all back.
@@ -104,8 +120,8 @@ Prices.STALE_DAYS = 3
 -- TSM custom price used when no other is set: latest scan's lowest buyout, else market value.
 Prices.DEFAULT_TSM_PRICE = "first(DBMinBuyout, DBMarket)"
 
-Prices.SOURCES = { "AUCTIONATOR", "TSM" } -- order tried by "AUTO"
-Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster" }
+Prices.SOURCES = { "AUCTIONATOR", "TSM", "SNAPPRICE" } -- order tried by "AUTO"
+Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster", SNAPPRICE = "SnapPrice" }
 
 local function Profile()
     local db = ns.CH and ns.CH.db
@@ -120,6 +136,23 @@ end
 local function TSMAPI()
     local api = _G.TSM_API
     if type(api) == "table" and api.GetCustomPriceValue then return api end
+end
+
+local function AddOnLoaded(name)
+    local f = (C_AddOns and C_AddOns.IsAddOnLoaded) or IsAddOnLoaded
+    return f ~= nil and f(name) and true or false
+end
+
+-- SnapPrice has no API for other addons; its saved data is global: SnapPriceDB.realms
+-- ["<realm> - <faction>"] = { prices = { [itemID] = lowest buyout per unit }, lastScan = unix time }.
+local function SnapPriceData()
+    local db = _G.SnapPriceDB
+    local realms = type(db) == "table" and db.realms
+    if type(realms) ~= "table" then return nil end
+    local key = (GetRealmName and GetRealmName() or "?") .. " - " ..
+        (UnitFactionGroup and UnitFactionGroup("player") or "?")
+    local d = realms[key]
+    if type(d) == "table" and type(d.prices) == "table" then return d end
 end
 
 local function TSMPriceString()
@@ -150,6 +183,19 @@ local SOURCES = {
             local ok, price = pcall(TSMAPI().GetCustomPriceValue, TSMPriceString(), "i:" .. itemID)
             if not ok or type(price) ~= "number" or price <= 0 then return nil end
             return price, nil -- TSM doesn't say how old a price is
+        end,
+    },
+    SNAPPRICE = {
+        available = function() return AddOnLoaded("SnapPrice") or SnapPriceData() ~= nil end,
+        get = function(itemID)
+            local d = SnapPriceData()
+            local price = d and d.prices[itemID]
+            if type(price) ~= "number" or price <= 0 then return nil end
+            local age
+            if type(d.lastScan) == "number" and d.lastScan > 0 and time then
+                age = math.max(0, time() - d.lastScan) / 86400
+            end
+            return price, age -- every price is from its last full scan
         end,
     },
 }
@@ -188,13 +234,19 @@ function Prices.CheckTSMPrice(s)
     return valid and true or false, err
 end
 
--- Unix time of Auctionator's last full scan of the Auction House, or nil. Not part of
--- Auctionator's public API, so read defensively; it's account-wide, not per realm.
--- Auctionator's default scan is the incremental "browse" scan (TimeOfLastBrowseScan);
--- the replicate / GetAll scans are options, so the latest of the three counts.
+-- Unix time of the price source's last full scan of the Auction House, or nil.
+-- Auctionator: not part of its public API, so read defensively; it's account-wide, not per
+-- realm. Its default scan is the incremental "browse" scan (TimeOfLastBrowseScan); the
+-- replicate / GetAll scans are options, so the latest of the three counts.
+-- SnapPrice: its last scan for this realm and faction.
 local SCAN_FIELDS = { "TimeOfLastBrowseScan", "TimeOfLastReplicateScan", "TimeOfLastGetAllScan" }
 function Prices.LastFullScan()
-    if Prices.ActiveSource() ~= "AUCTIONATOR" then return nil end
+    local source = Prices.ActiveSource()
+    if source == "SNAPPRICE" then
+        local d = SnapPriceData()
+        return d and type(d.lastScan) == "number" and d.lastScan > 0 and d.lastScan or nil
+    end
+    if source ~= "AUCTIONATOR" then return nil end
     local state = (_G.Auctionator and _G.Auctionator.SavedState) or _G.AUCTIONATOR_SAVEDVARS
     if type(state) ~= "table" then return nil end
     local latest

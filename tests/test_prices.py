@@ -168,6 +168,35 @@ check("latest of several scan kinds", P.LastFullScan() == 1700000900)
 lua.execute("Auctionator = nil")
 check("no last scan when TSM is the source", P.LastFullScan() is None)
 
+# SnapPrice: read from its saved data (no API), for your realm and faction.
+lua.execute("""TSM_API = nil; Auctionator = nil
+function GetRealmName() return "Doomhowl" end
+function UnitFactionGroup() return "Alliance" end
+now = 1700000000 + 2 * 86400
+function time() return now end
+SnapPriceDB = { realms = {
+    ["Doomhowl - Alliance"] = { prices = { [1] = 9000 }, lastScan = 1700000000 },
+    ["Doomhowl - Horde"] = { prices = { [1] = 1 }, lastScan = 1700000000 },
+} }""")
+check("auto falls back to SnapPrice", P.ActiveSource() == "SNAPPRICE" and P.SourceName() == "SnapPrice")
+price, age = P.GetItemPrice(1)
+check("SnapPrice: your realm and faction's price, aged by its last scan", price == 9000 and abs(age - 2) < 1e-9,
+      (price, age))
+check("SnapPrice: item not on the AH", P.GetItemPrice(2) is None)
+check("SnapPrice: last full scan", P.LastFullScan() == 1700000000)
+lua.execute("SnapPriceDB.realms['Doomhowl - Alliance'].lastScan = 0")
+check("SnapPrice: never scanned", P.LastFullScan() is None and P.GetItemPrice(1)[1] is None)
+lua.execute("Auctionator = AuctionatorStub")
+check("Auctionator still first in auto", P.ActiveSource() == "AUCTIONATOR")
+lua.execute("ns.CH.db.profile.priceSource = 'SNAPPRICE'")
+check("SnapPrice chosen", P.ActiveSource() == "SNAPPRICE" and P.GetItemPrice(1)[0] == 9000)
+lua.execute("SnapPriceDB = nil")
+check("SnapPrice chosen but not installed: no prices", P.ActiveSource() is None)
+lua.execute("C_AddOns = { IsAddOnLoaded = function(n) return n == 'SnapPrice' end }")
+check("SnapPrice loaded before its data: installed, no prices yet",
+      P.ActiveSource() == "SNAPPRICE" and P.GetItemPrice(1) is None)
+lua.execute("C_AddOns = nil; ns.CH.db.profile.priceSource = 'AUTO'; Auctionator = nil")
+
 # Coin pouch cashback
 lua.execute("""Auctionator = AuctionatorStub; TSM_API = nil
 prices = { [1] = 14239, [2] = 2500, [100] = 1000, [200] = 1000 }
@@ -211,6 +240,9 @@ e = P.GetWritEstimate(100)
 check("cashback off: net is the cost", not P.CashbackOn() and e.cashback == 0 and e.net == e.cost
       and abs(e.repPerGold - 75 / 1.4239) < 1e-9, (e.cashback, e.net))
 check("cashback off: pouch stats still known", P.PouchStats("JOURNEYMAN").opened == 11)
+check("cashback off: pouch gold still known", P.Cashback(100) == 0 and P.PouchGold(100) > 0)
+t = P.PouchTotals()
+check("pouch totals across levels", t.opened == 11 and t.total == 10 * 5490 + 2000, (t.opened, t.total))
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

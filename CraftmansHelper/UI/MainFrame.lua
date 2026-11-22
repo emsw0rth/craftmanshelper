@@ -854,6 +854,11 @@ function UI:BuildRoute(container)
     AddButton(container, Route:IsActive() and "Re-plan route" or "Plan route", 150, function() Route:Plan() end)
     if Route:IsActive() then
         AddButton(container, "Clear route", 120, function() Route:Clear() end)
+        local shown = CH.db.profile.tracker.shown
+        AddButton(container, shown and "Hide tracker" or "Show tracker", 120, function()
+            CH.RouteTracker:SetShown(not shown)
+            self:Redraw()
+        end)
     end
     local hint = AceGUI:Create("Label")
     hint:SetWidth(240)
@@ -889,9 +894,15 @@ function UI:BuildRoute(container)
         local r = ns.Rep.OfRoute(route)
         local text = string.format("This route: %d writ%s, %s reputation", r.count, r.count == 1 and "" or "s",
             C(COLOR.ready, ns.Rep.Number(r.rep)))
+        if r.gold > 0 then
+            text = text .. string.format(" and about %s from the coin pouches", ns.FormatMoneyIcons(r.gold))
+        end
         if r.left.count < r.count then
             text = text .. string.format(". %d delivered, %s still to go", r.count - r.left.count,
                 C(COLOR.ready, ns.Rep.Number(r.left.rep)))
+            if r.left.gold > 0 and r.left.gold < r.gold then
+                text = text .. string.format(" (and about %s)", ns.FormatMoneyIcons(r.left.gold))
+            end
         end
         AddLabel(scroll, text .. ".", GameFontHighlight)
         local outlook = ns.Rep.Outlook(r.left.rep)
@@ -974,12 +985,16 @@ local function PriceSourceText()
         local s = CH.db.profile.tsmPrice
         if not s or s:match("^%s*$") then s = P.DEFAULT_TSM_PRICE end
         return C(COLOR.dim, "Prices from TradeSkillMaster (" .. s .. ").")
+    elseif key == "SNAPPRICE" then
+        local t = P.LastFullScan()
+        return C(COLOR.dim, "Prices from SnapPrice (lowest buyout). " ..
+            (t and ("Last full Auction House scan: " .. Ago(time() - t) .. ".") or "No full Auction House scan yet."))
     end
     local pref = CH.db.profile.priceSource
     if pref and pref ~= "AUTO" then
         return C(COLOR.inbags, P.SOURCE_NAMES[pref] .. " isn't installed, so there are no prices.")
     end
-    return C(COLOR.inbags, "No price addon found: install Auctionator or TradeSkillMaster for prices.")
+    return C(COLOR.inbags, "No price addon found: install Auctionator, TradeSkillMaster or SnapPrice for prices.")
 end
 
 -- Filter keys for a writ's turn-in: zone name, and NPC (name + zone, since names can repeat).
@@ -1149,7 +1164,7 @@ function UI:BuildBuy(container)
 
     if not ns.Prices.IsAvailable() then
         local scroll = CreateScroll(container, "buy")
-        AddLabel(scroll, "This tab needs Auction House prices from Auctionator or TradeSkillMaster.\n\n" ..
+        AddLabel(scroll, "This tab needs Auction House prices from Auctionator, TradeSkillMaster or SnapPrice.\n\n" ..
             "Install one of them and scan the Auction House to see which writs are cheapest to buy. " ..
             "You can choose the price source in the Settings tab.", GameFontHighlight)
         AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
@@ -1361,8 +1376,9 @@ function UI:BuildSettings(container)
     local function Label(key)
         return P.SOURCE_NAMES[key] .. (P.IsInstalled(key) and "" or " (not installed)")
     end
-    source:SetList({ AUTO = "Automatic (whichever is installed)", AUCTIONATOR = Label("AUCTIONATOR"), TSM = Label("TSM") },
-        { "AUTO", "AUCTIONATOR", "TSM" })
+    source:SetList({ AUTO = "Automatic (whichever is installed)", AUCTIONATOR = Label("AUCTIONATOR"), TSM = Label("TSM"),
+                     SNAPPRICE = Label("SNAPPRICE") },
+        { "AUTO", "AUCTIONATOR", "TSM", "SNAPPRICE" })
     source:SetValue(db.priceSource or "AUTO")
     source:SetCallback("OnValueChanged", function(_, _, v) db.priceSource = v; self:Redraw() end)
     scroll:AddChild(source)
@@ -1402,11 +1418,13 @@ function UI:BuildSettings(container)
         local st = P.PouchStats(tier)
         table.insert(pouchParts, ns.TIER_NAMES[tier] .. " " .. ns.FormatMoneyIcons(st.average))
     end
-    local opened = 0
-    for _, tier in ipairs(ns.TIERS) do opened = opened + P.PouchStats(tier).opened end
+    local totals = P.PouchTotals()
+    local opened = totals.opened
     AddLabel(scroll, C(COLOR.dim, "Average pouch: " .. table.concat(pouchParts, ", ") .. ". From Wowhead" ..
         (opened > 0 and string.format(" and the %d pouch%s you've opened", opened, opened == 1 and "" or "es") or
-        ", until you open some") .. ". /writs pouches for details."), GameFontHighlightSmall)
+        ", until you open some") .. "." ..
+        (opened > 0 and string.format(" Your pouches have given you %s so far.", ns.FormatMoneyIcons(totals.total)) or "") ..
+        " /writs pouches for details."), GameFontHighlightSmall)
 
     AddHeading(scroll, "Reputation")
     local dip = AceGUI:Create("Dropdown")

@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.11.0
+
+- **Start writs from the route tracker:** under the steps, a button for each writ at the current stop that's still
+  unstarted in your bags. Click it to start the writ's quest, without digging through your bags.
+  - The buttons are only for the stop you're heading to, so you never start more quests than you're about to hand in.
+  - Or bind a key to **Start the next writ** (Key Bindings → Craftman's Helper). Each press starts the next one.
+  - With a full quest log (40/40) the buttons are greyed out and say so.
+  - In combat, the game doesn't let addons change these buttons; they catch up when the fight ends.
+- **SnapPrice** can be your price source: choose it in **Settings → Price source**, or let Automatic pick it when
+  Auctionator and TradeSkillMaster aren't installed. Prices are the lowest buyout from SnapPrice's last full scan, and
+  Buy Writs shows when that was.
+- **Coin pouch totals:** the route says about how much gold its coin pouches will give, for example "This route: 6
+  writs, 750 reputation and about 3g 12s from the coin pouches". `/writs pouches` and Settings show what your pouches
+  have given you so far, across all your characters.
+- **Show or hide the route tracker** with a button in the Route tab.
+- **Fixed:** the recipe marker in the profession window no longer covers the number of items you can craft.
+
 ## 1.10.3
 
 - **Fixed:** routes only ride into another zone where you really can. They go through the roads, passes, tunnels and

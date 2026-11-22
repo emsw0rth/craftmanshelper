@@ -43,13 +43,15 @@ end
 
 -- A route's writs: { count, rep, left = { count, rep } } where left is what isn't delivered yet.
 function Rep.OfRoute(route)
-    local out = { count = 0, rep = 0, left = { count = 0, rep = 0 } }
+    local out = { count = 0, rep = 0, gold = 0, left = { count = 0, rep = 0, gold = 0 } }
+    local Pouch = ns.Prices and ns.Prices.PouchGold or function() return 0 end
     for _, stop in ipairs(route and route.stops or {}) do
         for _, writID in ipairs(stop.writs) do
-            local r = Rep.OfWrit(writID)
-            out.count, out.rep = out.count + 1, out.rep + r
+            local r, g = Rep.OfWrit(writID), Pouch(writID)
+            out.count, out.rep, out.gold = out.count + 1, out.rep + r, out.gold + g
             if CH.Tracker:GetState(writID).status ~= STATUS.DONE then
-                out.left.count, out.left.rep = out.left.count + 1, out.left.rep + r
+                local left = out.left
+                left.count, left.rep, left.gold = left.count + 1, left.rep + r, left.gold + g
             end
         end
     end

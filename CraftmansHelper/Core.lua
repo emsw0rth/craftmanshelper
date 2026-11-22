@@ -42,7 +42,7 @@ local defaults = {
         tooltips = true,           -- add writ info to item tooltips
         markRecipes = true,        -- mark trainer and profession recipes that craft a writ item
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
-        priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR" or "TSM" (Prices.lua)
+        priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR", "TSM" or "SNAPPRICE" (Prices.lua)
         tsmPrice = "",
         cashback = true,           -- subtract the coin pouch's average gold from writ costs             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
         buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"

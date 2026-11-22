@@ -124,6 +124,17 @@ rowCallbacks[ProfessionsFrame.CraftingPage.RecipeList.ScrollBox](nil, prow, node
 check("profession row: marker shown", g.prow.craftmansHelperMark.shown and g.prow.craftmansHelperMark.itemID == 3383)
 lua.execute("rowCallbacks[ProfessionsFrame.CraftingPage.RecipeList.ScrollBox](nil, prow, node({ categoryInfo = {} }))")
 check("category row: marker hidden", not g.prow.craftmansHelperMark.shown)
+lua.execute("""prow.Count = { IsShown = function() return true end, GetText = function() return " [3]" end,
+                             GetStringWidth = function() return 20 end }
+rowCallbacks[ProfessionsFrame.CraftingPage.RecipeList.ScrollBox](nil, prow, node({ recipeInfo = { recipeID = 101, name = "Elixir of Wisdom" } }))""")
+pt = g.prow.craftmansHelperMark.points
+last = pt[len(pt)]
+check("craftable count shown: marker after the count", lua.eval("function(p) return p[2] == prow.Count end")(last) and last[4] == 23, (last[2], last[4]))
+lua.execute("""prow.Count.GetText = function() return "" end
+rowCallbacks[ProfessionsFrame.CraftingPage.RecipeList.ScrollBox](nil, prow, node({ recipeInfo = { recipeID = 101, name = "Elixir of Wisdom" } }))""")
+pt = g.prow.craftmansHelperMark.points
+last = pt[len(pt)]
+check("no count: marker after the name", lua.eval("function(p) return p[2] == prow.Label end")(last) and last[4] == 53, (last[4],))
 
 # Trainer tooltip lines.
 lua.execute("crafted = {}; GameTooltip.shown = false; hooks.SetTrainerService(GameTooltip, 2)")

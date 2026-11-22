@@ -78,6 +78,8 @@ route = lua.eval("{ stops = { { writs = { 1, 2 } }, { writs = { 5 } } } }")
 r = R.OfRoute(route)
 check("route total", r.count == 3 and r.rep == 75 + 125 + 200, (r.count, r.rep))
 check("route left: delivered writs drop out", r.left.count == 2 and r.left.rep == 200, (r.left.count, r.left.rep))
+check("route coin pouches", r.gold == 3490 + 7507 + 15179, r.gold)
+check("route coin pouches still to come", r.left.gold == 3490 + 7507, r.left.gold)
 
 st = R.Standing()
 check("standing found by name", st is not None and st.standing == "Friendly" and st.value == 5600 and st.max == 6000,

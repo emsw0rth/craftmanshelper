@@ -145,8 +145,12 @@ g.RunTimers()
 check("quick openings: every pouch recorded", log(284584) == (6, 6562 + 12600, 2950, 3612), log(284584))
 
 g.ns.CH.Pouches.PrintStats(g.ns.CH.Pouches)
-check("stats printed", len(g.printed) == 4 and "Journeyman pouch" in g.printed[1] and "6 opened" in g.printed[1],
+check("stats printed", len(g.printed) == 5 and "Journeyman pouch" in g.printed[1] and "6 opened" in g.printed[1],
       list(g.printed.values()))
+check("stats: total from every pouch", "7 pouches opened" in g.printed[4] and "in all" in g.printed[4],
+      g.printed[4])
+t = g.ns.Prices.PouchTotals()
+check("pouch totals", t.opened == 7 and t.total == 26862, (t.opened, t.total))
 
 print(f"\n{'FAILED' if failures else 'All passed'} ({failures} failure(s))")
 sys.exit(1 if failures else 0)

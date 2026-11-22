@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.10.3)
+## Features (v1.11.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -17,20 +17,24 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   - Each stop comes with directions ("Fly from … to …", "Take the boat from … to …"). The arrow (TomTom, or the
     game's map pin) points at the flight master or dock first, then at the NPC, and moves on as you travel and
     deliver.
-  - A small **route tracker** window shows the next 5 steps while a route is active.
+  - A small **route tracker** window shows the next 5 steps while a route is active. Show or hide it with the
+    button in the Route tab.
+  - Under the steps, a button for each writ at the current stop that's still unstarted in your bags: click it to
+    start the writ's quest. Or bind a key to **Start the next writ** (Key Bindings → Craftman's Helper).
   - `/writs why` prints the planner's travel times for the current leg.
   - An active route is planned again after a `/reload` or relog.
   - Shows the route's reputation, and how much is still to go as you deliver.
   - Uses only your faction's boats, zeppelins and tram.
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
-  Auctionator or TradeSkillMaster (any TSM custom price string). Optionally includes the writ's own price.
+  Auctionator, TradeSkillMaster (any TSM custom price string) or SnapPrice (lowest buyout from its last full scan). Optionally includes the writ's own price.
 - **Coin pouch cashback:** the Coin Pouch each turn-in gives is counted as money back in rep per gold and the
   cheapest way to your next standing ("profit" when it pays more than the writ costs). Starts from Wowhead's
-  average per writ level and learns from the pouches you open (`/writs pouches`).
+  average per writ level and learns from the pouches you open (`/writs pouches`). The route shows about how much its
+  pouches will give, and `/writs pouches` and Settings show what your pouches have given you so far.
 - **Buy Writs** tab: a table of the writs on the Auction House (name, level, price of writ + required items,
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
-  and NPC, and hide writs you carry or have done today. Shows when Auctionator last did a full scan.
+  and NPC, and hide writs you carry or have done today. Shows when Auctionator or SnapPrice last did a full scan.
   - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
@@ -83,7 +87,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/Alts.lua` | Writs and writ items on each character's bags and bank (account-wide) |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
-| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API; reputation per tier; coin pouch averages |
+| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API, or SnapPrice's saved scan; reputation per tier; coin pouch averages |
 | `CraftmansHelper/Pouches.lua` | Learns how much gold each coin pouch gives when it's opened |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
 | `CraftmansHelper/RecipeMarks.lua` | Writ icons on trainer and profession recipes |
@@ -95,9 +99,10 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Hearth.lua` | Learns where the Hearthstone takes you; cooldown |
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, orders them by travel time, directions, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
-| `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window |
+| `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window, with buttons to start the current stop's writs |
+| `CraftmansHelper/Bindings.xml` | The "Start the next writ" key binding |
 | `CraftmansHelper/Media/` | Textures (the dotted line between table rows) |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py`, `test_routetracker.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |

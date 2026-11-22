@@ -122,6 +122,11 @@ function Pouches:PrintStats()
         end
         CH:Print(line)
     end
+    local totals = ns.Prices.PouchTotals()
+    if totals.opened > 0 then
+        CH:Print(string.format("All your characters: %d pouch%s opened, %s in all.", totals.opened,
+            totals.opened == 1 and "" or "es", ns.FormatMoney(totals.total)))
+    end
     CH:Print(ns.Prices.CashbackOn() and "Price estimates count the pouch as money back." or
         "Price estimates don't count the pouch (turned off in Settings).")
 end
