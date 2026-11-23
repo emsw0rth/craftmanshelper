@@ -84,7 +84,7 @@ lua = LuaRuntime(unpack_returned_tuples=True)
 lua.execute(STUBS)
 g = lua.globals()
 lua.execute("function _load(src, name) local f = assert(loadstring(src, name)); f('CraftmansHelper', ns) end")
-for f in ("Solver.lua", "Travel.lua", "Route.lua"):
+for f in ("Solver.lua", "Travel.lua", "Route.lua", "FlightPaths.lua"):
     g._load((ADDON / f).read_text(encoding="utf-8"), f)
 Route = g.CH.Route
 same = lua.eval("rawequal")  # lupa wrappers don't compare Lua tables by identity
@@ -243,8 +243,13 @@ steps = route.stops[1].steps
 kinds = [steps[i].kind for i in range(1, len(steps) + 1)]
 check("known flight path is used", "fly" in kinds, kinds)
 fly = [steps[i] for i in range(1, len(steps) + 1) if steps[i].kind == "fly"][0]
-check("flight directions", g.ns.Travel.Describe(fly) == "Fly from FM Ash (Zone1440) to FM TN (Zone1441)",
-      g.ns.Travel.Describe(fly))
+check("flight directions with the flight time",
+      g.ns.Travel.Describe(fly) == "Fly from FM Ash (Zone1440) to FM TN (Zone1441), about "
+      + g.ns.Travel.Minutes(fly.seconds), g.ns.Travel.Describe(fly))
+check("flight paths known per continent", g.CH.FlightPaths.CountOn(g.CH.FlightPaths, 1414) == 2
+      and g.CH.FlightPaths.CountOn(g.CH.FlightPaths, 1415) == 0)
+check("flight time formats", (g.ns.Travel.Minutes(20), g.ns.Travel.Minutes(150), g.ns.Travel.Minutes(3900))
+      == ("under a minute", "3 min", "1h 5m"))
 lua.execute("""CH.db.char.flightPaths = {}; ns.FlightMasters = {}
 player.map, player.x, player.y = 1437, 0.5, 0.5""")
 

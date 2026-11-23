@@ -183,10 +183,7 @@ local function AddButton(parent, text, width, onClick)
 end
 
 local function FormatMinutes(seconds)
-    local m = math.floor((seconds or 0) / 60 + 0.5)
-    if m < 1 then return "under a minute" end
-    if m >= 60 then return string.format("%dh %dm", math.floor(m / 60), m % 60) end
-    return m .. " min"
+    return ns.Travel.Minutes(seconds)
 end
 
 local function CreateScroll(container, key)
@@ -916,6 +913,11 @@ function UI:BuildRoute(container)
         for _, stop in ipairs(leg.stops) do if not stop.done then pending = pending + 1 end end
         AddHeading(scroll, string.format("%s: %d stop%s, about %s", ns.ContinentName(leg.contID),
             #leg.stops, #leg.stops == 1 and "" or "s", FormatMinutes(leg.length)))
+        -- Flight paths are learned from the flight map; until it's opened here, routes can't fly.
+        if leg.contID ~= ns.UNKNOWN_CONTINENT and CH.FlightPaths:CountOn(leg.contID) == 0 then
+            AddLabel(scroll, C(COLOR.inbags, string.format("No flight paths known in %s yet: open a flight " ..
+                "master's map there once, so routes can fly.", ns.ContinentName(leg.contID))), GameFontHighlightSmall)
+        end
         for _, stop in ipairs(leg.stops) do
             n = n + 1
             local isCurrent = stop == current

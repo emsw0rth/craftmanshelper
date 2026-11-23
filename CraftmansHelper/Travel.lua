@@ -303,11 +303,21 @@ local function PlaceName(node)
     return zone or "?"
 end
 
+-- "3 min", "1h 5m", or "under a minute".
+function Travel.Minutes(seconds)
+    local m = math.floor((seconds or 0) / 60 + 0.5)
+    if m < 1 then return "under a minute" end
+    if m >= 60 then return string.format("%dh %dm", math.floor(m / 60), m % 60) end
+    return m .. " min"
+end
+
 -- One line of directions for a step, or nil for plain walking.
 function Travel.Describe(step)
     if step.kind == "fly" then
-        return string.format("Fly from %s (%s) to %s (%s)", step.from.name or "?", PlaceName(step.from),
+        local text = string.format("Fly from %s (%s) to %s (%s)", step.from.name or "?", PlaceName(step.from),
             step.to.name or "?", PlaceName(step.to))
+        if step.seconds then text = text .. ", about " .. Travel.Minutes(step.seconds) end
+        return text
     elseif step.kind == "travel" then
         return "Travel to " .. PlaceName(step.to)
     elseif step.kind == "cross" then

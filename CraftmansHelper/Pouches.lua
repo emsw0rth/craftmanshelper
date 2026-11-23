@@ -1,16 +1,18 @@
--- Learns how much gold the Coin Pouches from writ turn-ins hold. Opening one opens a loot
--- window with its gold; when that window came from an item, a pouch left the bags and money
--- came in, the amount is recorded for that pouch (Prices.RecordPouch, account-wide).
+-- Learns how much gold the Coin Pouches from writ turn-ins hold. Opening one opens no loot
+-- window: the gold comes in and the pouch leaves the bags in the same moment. So each pouch
+-- that leaves the bags is paired with gold that came in at about the same time (not at a
+-- merchant, where selling a pouch looks the same), and the amount is recorded for that pouch
+-- (Prices.RecordPouch, account-wide).
 local _, ns = ...
 local CH = ns.CH
 
 local Pouches = CH:NewModule("Pouches", "AceEvent-3.0", "AceTimer-3.0")
 CH.Pouches = Pouches
 
--- Seconds after the loot window closes for the last gold and bag change to come in.
-local SETTLE = 2
--- A pouch leaving the bags this many seconds before the loot window opened still counts.
-local EARLY = 2
+-- Most seconds between a pouch leaving the bags and its gold coming in.
+Pouches.PAIR = 0.5
+-- Seconds after the last gold or bag change before pairing them up.
+Pouches.WAIT = 1
 
 local function Count(id)
     local f = (C_Item and C_Item.GetItemCount) or GetItemCount
@@ -23,90 +25,94 @@ local function CountAll()
     return t
 end
 
--- Whether the open loot window is an item's contents (not a creature or chest). When the game
--- doesn't say where the loot comes from, it counts: a pouch still has to leave the bags.
-local function FromItem()
-    if not (GetNumLootItems and GetLootSourceInfo) then return true end
-    local any = false
-    for slot = 1, GetNumLootItems() do
-        local guid = GetLootSourceInfo(slot)
-        if type(guid) == "string" then
-            any = true
-            if guid:find("^Item%-") then return true end
-        end
+-- /writs pouches debug: say in chat what the detection sees (for this session only).
+local function Debug(fmt, ...)
+    if Pouches.debug then
+        CH:Print(string.format("|cff999999[pouch %.2f]|r ", GetTime()) .. string.format(fmt, ...))
     end
-    return not any
+end
+
+function Pouches:ToggleDebug()
+    self.debug = not self.debug
+    CH:Print(self.debug and "Pouch debug on: open a coin pouch and the steps show here. " ..
+        "/writs pouches debug again to stop." or "Pouch debug off.")
 end
 
 function Pouches:OnEnable()
     self.counts = CountAll()
     self.money = GetMoney()
-    self.drops = {} -- { id, t } pouches that left the bags lately
-    self:RegisterEvent("LOOT_OPENED")
-    self:RegisterEvent("LOOT_CLOSED")
+    self.drops = {} -- { id, t }: pouches that left the bags, not paired yet
+    self.gains = {} -- { copper, t }: gold that came in, not paired yet
     self:RegisterEvent("PLAYER_MONEY")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("MERCHANT_SHOW", function() self.merchant = true end)
     self:RegisterEvent("MERCHANT_CLOSED", function() self.merchant = false end)
 end
 
-function Pouches:LOOT_OPENED()
-    -- Opening pouches one after another: settle the last one now, with only what left the
-    -- bags before this window (a pouch that goes as its window opens is this one).
-    if self.finishTimer then
-        self:CancelTimer(self.finishTimer)
-        self:Finish(GetTime())
-    end
-    self.session = FromItem() and { opened = GetTime(), gain = 0 } or nil
-end
-
-function Pouches:LOOT_CLOSED()
-    if self.session and not self.finishTimer then
-        self.finishTimer = self:ScheduleTimer("Finish", SETTLE)
-    end
+-- Pairs up once nothing has changed for WAIT seconds.
+function Pouches:Settle()
+    if self.timer then self:CancelTimer(self.timer) end
+    self.timer = self:ScheduleTimer("Pair", Pouches.WAIT)
 end
 
 function Pouches:PLAYER_MONEY()
     local now = GetMoney()
     local delta = now - (self.money or now)
     self.money = now
-    -- Selling or buying at a vendor moves money too (and a pouch can be sold).
-    if self.session and delta > 0 and not self.merchant then
-        self.session.gain = self.session.gain + delta
+    Debug("gold %+d copper%s", delta, self.merchant and " (at a merchant: ignored)" or "")
+    if delta > 0 and not self.merchant then
+        table.insert(self.gains, { copper = delta, t = GetTime() })
+        self:Settle()
     end
 end
 
 function Pouches:BAG_UPDATE_DELAYED()
     local counts, now = CountAll(), GetTime()
     for id, n in pairs(counts) do
-        for _ = 1, (self.counts[id] or 0) - n do table.insert(self.drops, { id = id, t = now }) end
-    end
-    self.counts = counts
-    -- Forget drops no loot window could still claim.
-    for i = #self.drops, 1, -1 do
-        if now - self.drops[i].t > 30 then table.remove(self.drops, i) end
-    end
-end
-
--- Records the closed loot window's pouch. before: only pouches that left the bags earlier count.
-function Pouches:Finish(before)
-    self.finishTimer = nil
-    local session = self.session
-    self.session = nil
-    if not session or session.gain <= 0 then return end
-    local claimed
-    for i = #self.drops, 1, -1 do
-        local t = self.drops[i].t
-        if t >= session.opened - EARLY and not (before and t >= before) then
-            if claimed then return end -- two pouches at once: can't tell them apart
-            claimed = i
+        local was = self.counts[id] or 0
+        if n ~= was then Debug("bags: pouch %d %d -> %d", id, was, n) end
+        -- Pouches sold at a merchant aren't opened.
+        if not self.merchant then
+            for _ = 1, was - n do table.insert(self.drops, { id = id, t = now }) end
         end
     end
-    if not claimed then return end
-    local id = table.remove(self.drops, claimed).id
-    if ns.Prices.RecordPouch(id, session.gain) then
-        self:SendMessage(ns.MSG_UPDATED)
+    self.counts = counts
+    if #self.drops > 0 then self:Settle() end
+end
+
+-- Records each pouch that left the bags with the gold that came in nearest to it (within
+-- PAIR seconds). Pouches of two kinds leaving at the same moment can't be told apart: skipped.
+function Pouches:Pair()
+    self.timer = nil
+    local drops, gains = self.drops, self.gains
+    self.drops, self.gains = {}, {}
+    local used, recorded = {}, false
+    for i, d in ipairs(drops) do
+        local clash = false
+        for j, other in ipairs(drops) do
+            if j ~= i and other.id ~= d.id and math.abs(other.t - d.t) <= Pouches.PAIR then clash = true end
+        end
+        local best, bestDt
+        for j, gain in ipairs(gains) do
+            local dt = math.abs(gain.t - d.t)
+            if not used[j] and dt <= Pouches.PAIR and (not bestDt or dt < bestDt) then best, bestDt = j, dt end
+        end
+        if clash then
+            Debug("pouches of two kinds left the bags at once: skipped")
+        elseif not best then
+            Debug("pouch %d left the bags with no gold: not opened (deleted, mailed, traded?)", d.id)
+        else
+            used[best] = true
+            local copper = gains[best].copper
+            if ns.Prices.RecordPouch(d.id, copper) then
+                Debug("recorded pouch %d with %d copper", d.id, copper)
+                recorded = true
+            else
+                Debug("%d copper is too much for pouch %d: not recorded", copper, d.id)
+            end
+        end
     end
+    if recorded then self:SendMessage(ns.MSG_UPDATED) end
 end
 
 -- Chat summary of what pouches pay (/writs pouches).

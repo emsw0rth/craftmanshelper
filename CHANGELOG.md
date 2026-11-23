@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.11.1
+
+- **Fixed:** opened coin pouches are recorded again. A pouch gives its gold without a loot window, which the addon was
+  waiting for, so `/writs pouches` kept saying none were opened. Now each pouch that leaves your bags is paired with the
+  gold that comes in at the same moment (not at a merchant, where selling a pouch looks the same).
+  - `/writs pouches debug` shows in chat what the addon sees when you open a pouch, for when it still doesn't count.
+- **Flight times in the directions:** flight steps say how long they take, for example "Fly from Bragok (The Barrens)
+  to Bera Stonehammer (Tanaris), about 3 min".
+- **Missing flight paths:** when your route goes to a continent where the addon doesn't know any of your flight paths
+  yet, the Route tab says so: open a flight master's map there once, and routes can fly.
+
 ## 1.11.0
 
 - **Start writs from the route tracker:** under the steps, a button for each writ at the current stop that's still

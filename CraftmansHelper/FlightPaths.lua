@@ -98,6 +98,16 @@ function FlightPaths:Count()
     return n
 end
 
+-- Flight paths you know on a continent (its map ID, as ns.ResolveZone gives it).
+function FlightPaths:CountOn(contID)
+    local n = 0
+    for npcID in pairs(CH.db.char.flightPaths) do
+        local fm = ns.FlightMasters[npcID]
+        if fm and select(3, ns.ResolveZone(fm.map)) == contID then n = n + 1 end
+    end
+    return n
+end
+
 function FlightPaths:OnEnable()
     self:RegisterEvent("TAXIMAP_OPENED", "OnTaxiMapOpened")
     -- Map data is ready once you're in the world.

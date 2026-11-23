@@ -1,4 +1,4 @@
-"""Tests for Pouches.lua (learning coin pouch gold from loot events), in Lua 5.1.
+"""Tests for Pouches.lua (learning coin pouch gold: pouch gone + gold in at once), in Lua 5.1.
 
     pip install lupa
     python tests/test_pouches.py
@@ -24,12 +24,10 @@ function ns.CH:NewModule(name)
     function m:CancelTimer(t) t.cancelled = true end
     return m
 end
-now, money, bags, loot = 100, 50000, { [284584] = 2, [284585] = 1, [284586] = 0 }, {}
+now, money, bags = 100, 50000, { [284584] = 2, [284585] = 1, [284586] = 0 }
 function GetTime() return now end
 function GetMoney() return money end
 C_Item = { GetItemCount = function(id) return bags[id] or 0 end }
-function GetNumLootItems() return #loot end
-function GetLootSourceInfo(slot) return loot[slot] end
 
 -- Fires an event at the module (method name or the registered function).
 function Fire(event)
@@ -67,82 +65,76 @@ def log(item):
     return (r.n, r.total, r.min, r.max) if r else None
 
 
-def open_pouch(item, copper, source="Item-1-0-ABC", drop_first=False):
-    """Right-click a pouch: loot window, gold in, pouch gone, window closed."""
-    lua.execute(f"loot = {{ '{source}' }}" if source else "loot = {}")
-    if drop_first:
-        lua.execute(f"bags[{item}] = bags[{item}] - 1"); g.Fire("BAG_UPDATE_DELAYED")
-    g.Fire("LOOT_OPENED")
+def gold(copper):
     lua.execute(f"money = money + {copper}"); g.Fire("PLAYER_MONEY")
-    if not drop_first:
-        lua.execute(f"bags[{item}] = bags[{item}] - 1"); g.Fire("BAG_UPDATE_DELAYED")
-    g.Fire("LOOT_CLOSED")
-    lua.execute("now = now + 3")
+
+
+def bag(item, change=-1):
+    lua.execute(f"bags[{item}] = bags[{item}] + {change}"); g.Fire("BAG_UPDATE_DELAYED")
+
+
+def settle():
+    lua.execute("now = now + 2")
     g.RunTimers()
+
+
+def open_pouch(item, copper, bag_first=False):
+    """Right-click a pouch: as seen in-game, no loot window; the gold and the bag change come at once."""
+    if bag_first:
+        bag(item); gold(copper)
+    else:
+        gold(copper); bag(item)
+    settle()
 
 
 open_pouch(284584, 3612)
 check("pouch opened: gold recorded", log(284584) == (1, 3612, 3612, 3612), log(284584))
 check("pouch opened: window told to redraw", g.messages == 1)
 
-open_pouch(284584, 2950, drop_first=True)
-check("pouch gone before the loot window opened still counts", log(284584) == (2, 6562, 2950, 3612), log(284584))
+open_pouch(284584, 2950, bag_first=True)
+check("bag change before the gold: still counts", log(284584) == (2, 6562, 2950, 3612), log(284584))
 
-# A creature's loot: not a pouch, even if a pouch leaves the bags at the same time.
-open_pouch(284585, 7000, source="Creature-0-1-2-3-4-5")
-check("creature loot: nothing recorded", log(284585) is None, log(284585))
+gold(500); settle()
+check("gold with no pouch gone (looting, a quest): nothing recorded", log(284584)[0] == 2 and log(284585) is None)
 
-# An item's loot (a clam, a lockbox) with no pouch leaving the bags.
-lua.execute("loot = { 'Item-1-0-XYZ' }")
-g.Fire("LOOT_OPENED")
-lua.execute("money = money + 500"); g.Fire("PLAYER_MONEY")
-g.Fire("LOOT_CLOSED"); lua.execute("now = now + 3"); g.RunTimers()
-check("other container: nothing recorded", log(284584)[0] == 2 and log(284585) is None)
+bag(284585); settle()
+check("pouch gone with no gold (deleted, mailed): nothing recorded", log(284585) is None)
+bag(284585, 1)
 
-# Gold while the loot window is open at a vendor (selling) doesn't count.
 g.Fire("MERCHANT_SHOW")
-open_pouch(284586 if False else 284585, 7400)
+open_pouch(284585, 7400)
 g.Fire("MERCHANT_CLOSED")
-check("at a vendor: nothing recorded", log(284585) is None, log(284585))
+bag(284585, 1); settle()
+check("pouch sold at a merchant: nothing recorded", log(284585) is None, log(284585))
 
-# A pouch window with no gold (empty pouch, or the money came later than we wait).
-lua.execute("loot = { 'Item-1-0-ABC' }; bags[284585] = bags[284585] + 1"); g.Fire("BAG_UPDATE_DELAYED")
-g.Fire("LOOT_OPENED")
-lua.execute("bags[284585] = bags[284585] - 1"); g.Fire("BAG_UPDATE_DELAYED")
-g.Fire("LOOT_CLOSED"); lua.execute("now = now + 3"); g.RunTimers()
-check("no gold: nothing recorded", log(284585) is None)
+# Gold a moment after the pouch still pairs; much later it doesn't.
+bag(284585); lua.execute("now = now + 0.3"); gold(7700); settle()
+check("gold just after the pouch: counts", log(284585) == (1, 7700, 7700, 7700), log(284585))
+lua.execute("bags[284585] = 1"); g.Fire("BAG_UPDATE_DELAYED"); settle()
+bag(284585); lua.execute("now = now + 0.8"); gold(7000); settle()
+check("gold long after the pouch: not that pouch's", log(284585)[0] == 1, log(284585))
 
-# Expert pouch, game not saying where the loot is from.
-lua.execute("bags[284585] = 1"); g.Fire("BAG_UPDATE_DELAYED")
-lua.execute("now = now + 60")  # the earlier unclaimed drop is old by now
-open_pouch(284585, 7700, source=None)
-check("loot source unknown: still counts with a pouch gone", log(284585) == (1, 7700, 7700, 7700), log(284585))
-
-# Two pouches gone at once: can't tell which gave what.
-lua.execute("bags[284584] = 5; bags[284586] = 3"); g.Fire("BAG_UPDATE_DELAYED")
-lua.execute("now = now + 60; loot = { 'Item-1-0-ABC' }")
-g.Fire("LOOT_OPENED")
-lua.execute("money = money + 9000"); g.Fire("PLAYER_MONEY")
+# Two kinds of pouch gone at once: can't tell which gave what.
+lua.execute("bags[284584] = 5; bags[284586] = 3"); g.Fire("BAG_UPDATE_DELAYED"); settle()
+gold(9000)
 lua.execute("bags[284584] = 4; bags[284586] = 2"); g.Fire("BAG_UPDATE_DELAYED")
-g.Fire("LOOT_CLOSED"); lua.execute("now = now + 3"); g.RunTimers()
-check("two pouches gone at once: nothing recorded", log(284584)[0] == 2 and log(284586) is None)
+settle()
+check("two kinds gone at once: nothing recorded", log(284584)[0] == 2 and log(284586) is None)
 
-# Opening pouches one after another, each window before the last one settled.
-lua.execute("now = now + 60; bags[284584] = 10"); g.Fire("BAG_UPDATE_DELAYED")
-lua.execute("now = now + 60")
-for i, (copper, first) in enumerate([(3000, False), (3100, True), (3200, False), (3300, True)]):
-    lua.execute("loot = { 'Item-1-0-ABC' }")
-    if first:  # this pouch leaves the bags in the same moment its window opens
-        lua.execute("bags[284584] = bags[284584] - 1"); g.Fire("BAG_UPDATE_DELAYED")
-    g.Fire("LOOT_OPENED")
-    lua.execute(f"money = money + {copper}"); g.Fire("PLAYER_MONEY")
-    if not first:
-        lua.execute("bags[284584] = bags[284584] - 1"); g.Fire("BAG_UPDATE_DELAYED")
-    g.Fire("LOOT_CLOSED")
-    lua.execute("now = now + 0.5")
-lua.execute("now = now + 3")
-g.RunTimers()
-check("quick openings: every pouch recorded", log(284584) == (6, 6562 + 12600, 2950, 3612), log(284584))
+# Too much gold for a pouch: something else paid out at the same moment.
+bag(284586); gold(15179 * 30); settle()
+check("far too much gold: not recorded", log(284586) is None)
+
+# Opening pouches one after another, quicker than the pairing waits.
+lua.execute("bags[284584] = 10"); g.Fire("BAG_UPDATE_DELAYED"); settle()
+for copper, first in [(3000, False), (3100, True), (3200, False), (3300, True)]:
+    if first:
+        bag(284584); gold(copper)
+    else:
+        gold(copper); bag(284584)
+    lua.execute("now = now + 0.4")
+settle()
+check("quick openings: every pouch with its own gold", log(284584) == (6, 6562 + 12600, 2950, 3612), log(284584))
 
 g.ns.CH.Pouches.PrintStats(g.ns.CH.Pouches)
 check("stats printed", len(g.printed) == 5 and "Journeyman pouch" in g.printed[1] and "6 opened" in g.printed[1],

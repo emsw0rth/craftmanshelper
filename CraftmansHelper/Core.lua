@@ -43,8 +43,8 @@ local defaults = {
         markRecipes = true,        -- mark trainer and profession recipes that craft a writ item
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
         priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR", "TSM" or "SNAPPRICE" (Prices.lua)
-        tsmPrice = "",
-        cashback = true,           -- subtract the coin pouch's average gold from writ costs             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
+        tsmPrice = "",             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
+        cashback = true,           -- subtract the coin pouch's average gold from writ costs
         buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"
         buySortDesc = nil,         -- "Buy Writs" tab: reversed order; nil = the column's usual order
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
@@ -101,6 +101,7 @@ local HELP = {
     "/writs resetpos - move the window and route tracker back to the middle of the screen",
     "/writs tooltips - turn writ info in item tooltips on / off",
     "/writs pouches - what the coin pouches from writs pay",
+    "/writs pouches debug - show in chat what the addon sees when you open a pouch",
     "/writs export - share the turn-in locations and coin pouches you've recorded",
     "/writs learned - list turn-in locations recorded in-game",
 }
@@ -144,6 +145,8 @@ function CH:SlashCommand(input)
         self.UI:ShowExport()
     elseif cmd == "pouches" or cmd == "pouch" then
         self.Pouches:PrintStats()
+    elseif cmd == "pouches debug" or cmd == "pouch debug" then
+        self.Pouches:ToggleDebug()
     elseif cmd == "status" then
         self:PrintStatus()
     elseif cmd == "learned" then
