@@ -35,6 +35,8 @@ local ISLANDS = { [1438] = "teldrassil", [1457] = "teldrassil", [2548] = "riverg
 -- Flight master npcID -> the game's taxi node ID, filled in at login (FlightPaths.lua).
 -- With it, flights use the measured lengths in Data/FlightLengths.lua.
 ns.TaxiNodeOfNpc = ns.TaxiNodeOfNpc or {}
+-- Flight master npcID -> the flight point's name on the flight map ("Gadgetzan"), likewise.
+ns.FlightPlaceOfNpc = ns.FlightPlaceOfNpc or {}
 
 -- Taxi nodes that appear in Data/FlightLengths.lua; for those, only listed routes are flown.
 local covered
@@ -311,11 +313,19 @@ function Travel.Minutes(seconds)
     return m .. " min"
 end
 
+-- A flight point: "Gadgetzan (Tanaris)", or just the zone when the place is named after it.
+-- Falls back to the flight master's name when the game hasn't named the place.
+function Travel.FlightPoint(node)
+    local zone = PlaceName(node)
+    local place = node.id and ns.FlightPlaceOfNpc[node.id]
+    if place and zone:find(place, 1, true) then return zone end
+    return string.format("%s (%s)", place or node.name or "?", zone)
+end
+
 -- One line of directions for a step, or nil for plain walking.
 function Travel.Describe(step)
     if step.kind == "fly" then
-        local text = string.format("Fly from %s (%s) to %s (%s)", step.from.name or "?", PlaceName(step.from),
-            step.to.name or "?", PlaceName(step.to))
+        local text = string.format("Fly from %s to %s", Travel.FlightPoint(step.from), Travel.FlightPoint(step.to))
         if step.seconds then text = text .. ", about " .. Travel.Minutes(step.seconds) end
         return text
     elseif step.kind == "travel" then

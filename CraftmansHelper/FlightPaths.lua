@@ -30,9 +30,35 @@ function FlightPaths.Match(instance, wx, wy)
     return bestID
 end
 
--- Taxi node ID of every flight master, so routes can use the measured flight
--- lengths (Data/FlightLengths.lua). The game lists taxi nodes per map, with
--- positions, without a flight map open.
+-- The place in a taxi node's name: "Gadgetzan, Tanaris" -> "Gadgetzan" (nil when it has none).
+function FlightPaths.PlaceOf(name)
+    if type(name) ~= "string" then return nil end
+    local cut = name:find(",", 1, true) or name:find("\239\188\140", 1, true) -- the second: a full-width comma
+    local place = strtrim(cut and name:sub(1, cut - 1) or name)
+    return place ~= "" and place or nil
+end
+
+-- Names every flight master near a taxi node after it (the nearest node's name wins). Kept apart
+-- from Match: both factions' flight masters in a town are named, whichever the node belongs to.
+local nameYards = {}
+local function NameFlightMasters(name, instance, wx, wy)
+    local place = FlightPaths.PlaceOf(name)
+    if not place then return end
+    for npcID, fm in pairs(ns.FlightMasters) do
+        local inst, fx, fy = ns.WorldPos(fm.map, fm.x, fm.y)
+        if inst == instance then
+            local d = math.sqrt((fx - wx) ^ 2 + (fy - wy) ^ 2)
+            if d < (nameYards[npcID] or MATCH_YARDS) then
+                nameYards[npcID] = d
+                ns.FlightPlaceOfNpc[npcID] = place
+            end
+        end
+    end
+end
+
+-- Taxi node ID and place name of every flight master, so routes can use the measured flight
+-- lengths (Data/FlightLengths.lua) and say where you fly. The game lists taxi nodes per map,
+-- with positions and names (in the game's language), without a flight map open.
 function FlightPaths:MapTaxiNodes()
     if not (C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap) then return 0 end
     local maps, seen = { 1414, 1415 }, { [1414] = true, [1415] = true }
@@ -49,6 +75,7 @@ function FlightPaths:MapTaxiNodes()
                 if pos.GetXY then x, y = pos:GetXY() end
                 local instance, wx, wy = ns.WorldPos(mapID, x * 100, y * 100)
                 local npcID = instance and FlightPaths.Match(instance, wx, wy)
+                if instance then NameFlightMasters(node.name, instance, wx, wy) end
                 if npcID and not ns.TaxiNodeOfNpc[npcID] then
                     ns.TaxiNodeOfNpc[npcID] = node.nodeID
                     n = n + 1
@@ -73,6 +100,7 @@ function FlightPaths:OnTaxiMapOpened()
             if pos.GetXY then x, y = pos:GetXY() end
             local instance, wx, wy = ns.WorldPos(mapID, x * 100, y * 100)
             local npcID = instance and FlightPaths.Match(instance, wx, wy)
+            if instance then NameFlightMasters(node.name, instance, wx, wy) end
             if npcID and node.nodeID then ns.TaxiNodeOfNpc[npcID] = node.nodeID end
             if npcID and not known[npcID] then
                 known[npcID] = true

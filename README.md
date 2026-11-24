@@ -8,14 +8,14 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.11.1)
+## Features (v1.12.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
   - Stops are ordered by travel time across both continents, using the flight paths the character knows, boats,
     zeppelins, the Deeprun Tram and, once, the Hearthstone when it saves time. A continent where the character
     knows no flight paths yet gets a reminder to open a flight master's map there.
-  - Each stop comes with directions ("Fly from … to …, about 3 min", "Take the boat from … to …"). The arrow (TomTom, or the
+  - Each stop comes with directions ("Fly from Ratchet (The Barrens) to Gadgetzan (Tanaris), about 3 min", "Take the boat from … to …"). The arrow (TomTom, or the
     game's map pin) points at the flight master or dock first, then at the NPC, and moves on as you travel and
     deliver.
   - A small **route tracker** window shows the next 5 steps while a route is active. Show or hide it with the

@@ -435,7 +435,7 @@ function Route:Explain()
     table.sort(options, function(x, y) return x.total < y.total end)
     for i = 1, math.min(3, #options) do
         local o = options[i]
-        CH:Print(string.format("  Via %s -> %s: %s", o.a.name or "?", o.b.name or "?", Clock(o.total)))
+        CH:Print(string.format("  Via %s -> %s: %s", T.FlightPoint(o.a), T.FlightPoint(o.b), Clock(o.total)))
     end
     local measured = 0
     for _ in pairs(ns.TaxiNodeOfNpc) do measured = measured + 1 end

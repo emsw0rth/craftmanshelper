@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.12.0
+
+- **Flight directions name the place, not the flight master:** "Fly from Ratchet (The Barrens) to Gadgetzan (Tanaris),
+  about 3 min" instead of "Fly from Bragok (The Barrens) to Bera Stonehammer (Tanaris)". The names are the ones on the
+  flight map, in your game's language. Shown in the Route tab, the route tracker, the waypoints and `/writs why`.
+
 ## 1.11.1
 
 - **Fixed:** opened coin pouches are recorded again. A pouch gives its gold without a loot window, which the addon was

@@ -246,6 +246,31 @@ fly = [steps[i] for i in range(1, len(steps) + 1) if steps[i].kind == "fly"][0]
 check("flight directions with the flight time",
       g.ns.Travel.Describe(fly) == "Fly from FM Ash (Zone1440) to FM TN (Zone1441), about "
       + g.ns.Travel.Minutes(fly.seconds), g.ns.Travel.Describe(fly))
+lua.execute("""
+function strtrim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+FM = ns.FlightMasters
+C_TaxiMap = { GetTaxiNodesForMap = function(map)
+    if map ~= 1441 then return {} end
+    local function P(x, y) return { x = x, y = y } end
+    return { { nodeID = 2, name = "Near Miss, Needles", position = P(0.80, 0.88) },   -- 100 yards off
+             { nodeID = 1, name = "Freewind Post, Needles", position = P(0.90, 0.88) }, -- on the spot
+             { nodeID = 3, name = "Far Away, Needles", position = P(0.10, 0.10) } }
+end }
+FM[12] = { name = "Other Faction", map = 1441, x = 89, y = 88, faction = "H" }
+CH.FlightPaths:MapTaxiNodes()
+FM[12] = nil""")
+check("flight point named after the nearest taxi node", g.ns.FlightPlaceOfNpc[11] == "Freewind Post",
+      g.ns.FlightPlaceOfNpc[11])
+check("both factions' flight masters in a town get its name", g.ns.FlightPlaceOfNpc[12] == "Freewind Post")
+check("flight directions use the place, the NPC only without one",
+      g.ns.Travel.Describe(fly).startswith("Fly from FM Ash (Zone1440) to Freewind Post (Zone1441), about "),
+      g.ns.Travel.Describe(fly))
+lua.execute("ns.FlightPlaceOfNpc[11] = 'Zone1441'")
+check("place named like its zone: said once", " to Zone1441, about " in g.ns.Travel.Describe(fly), g.ns.Travel.Describe(fly))
+lua.execute("ns.FlightPlaceOfNpc = {}; ns.TaxiNodeOfNpc = {}")
+PlaceOf = g.CH.FlightPaths.PlaceOf
+check("place of a node name", (PlaceOf("Gadgetzan, Tanaris"), PlaceOf("Moonglade"), PlaceOf(""), PlaceOf(None),
+      PlaceOf("A\uff0cB")) == ("Gadgetzan", "Moonglade", None, None, "A"))
 check("flight paths known per continent", g.CH.FlightPaths.CountOn(g.CH.FlightPaths, 1414) == 2
       and g.CH.FlightPaths.CountOn(g.CH.FlightPaths, 1415) == 0)
 check("flight time formats", (g.ns.Travel.Minutes(20), g.ns.Travel.Minutes(150), g.ns.Travel.Minutes(3900))
