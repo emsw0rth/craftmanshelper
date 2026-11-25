@@ -999,13 +999,13 @@ local function PriceSourceText()
     return C(COLOR.inbags, "No price addon found: install Auctionator, TradeSkillMaster or SnapPrice for prices.")
 end
 
--- Filter keys for a writ's turn-in: zone name, and NPC (name + zone, since names can repeat).
+-- Filter keys for a writ's turn-in: zone name, its continent, and NPC (name + zone, since names can repeat).
 local function BuyKeys(writID)
     local s = CH.Tracker:GetState(writID)
     local t = s and s.turnIn
     local zone = (s and s.zoneName and s.zoneName ~= "") and s.zoneName or "Unknown"
     local name = t and t.name or "Unknown NPC"
-    return { zone = zone, npc = name .. ";" .. zone, npcLabel = string.format("%s (%s)", name, zone) }
+    return { zone = zone, cont = s and s.continentID or ns.UNKNOWN_CONTINENT, npc = name .. ";" .. zone, npcLabel = string.format("%s (%s)", name, zone) }
 end
 
 -- Where you already have a writ: { log = bool, bags = n, bank = n, alts = { holders } }.
@@ -1217,28 +1217,29 @@ function UI:BuildBuy(container)
     HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
     HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
 
-    -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone.
-    local zoneList, zoneOrder, npcList, npcOrder = { ALL = "All zones" }, {}, { ALL = "All NPCs" }, {}
+    -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone or continent.
+    local zones, npcList, npcOrder = {}, { ALL = "All NPCs" }, {}
     local keyOf = {}
     for writID in pairs(ns.Writs) do
         local k = BuyKeys(writID)
         keyOf[writID] = k
-        if not zoneList[k.zone] then zoneList[k.zone] = k.zone; table.insert(zoneOrder, k.zone) end
-        if (db.buyZone == "ALL" or db.buyZone == k.zone) and not npcList[k.npc] then
+        zones[k.zone] = k.cont
+    end
+    -- Saved choices that no longer exist (or don't fit the zone) fall back to "All".
+    local zoneList, zoneOrder = ns.PlaceFilterList(zones)
+    if not zoneList[db.buyZone] then db.buyZone = "ALL" end
+    for _, k in pairs(keyOf) do
+        if ns.MatchesPlace(db.buyZone, k.zone, k.cont) and not npcList[k.npc] then
             npcList[k.npc] = k.npcLabel
             table.insert(npcOrder, k.npc)
         end
     end
-    -- Saved choices that no longer exist (or don't fit the zone) fall back to "All".
-    if not zoneList[db.buyZone] then db.buyZone = "ALL" end
     if not npcList[db.buyNpc] then db.buyNpc = "ALL" end
-    table.sort(zoneOrder, SortName)
     table.sort(npcOrder, function(a, b) return SortName(npcList[a], npcList[b]) end)
-    table.insert(zoneOrder, 1, "ALL")
     table.insert(npcOrder, 1, "ALL")
 
     local zone = AceGUI:Create("Dropdown")
-    zone:SetLabel("Zone")
+    zone:SetLabel("Continent or zone")
     zone:SetRelativeWidth(HALF)
     zone:SetList(zoneList, zoneOrder)
     zone:SetValue(db.buyZone)
@@ -1272,7 +1273,7 @@ function UI:BuildBuy(container)
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
         if planSet then return planSet[writID] or false end
         local k = keyOf[writID]
-        if db.buyZone ~= "ALL" and k.zone ~= db.buyZone then return false end
+        if not ns.MatchesPlace(db.buyZone, k.zone, k.cont) then return false end
         if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
         local s = CH.Tracker:GetState(writID)
         if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end

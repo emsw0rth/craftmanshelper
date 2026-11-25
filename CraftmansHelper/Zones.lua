@@ -88,3 +88,56 @@ function ns.ContinentName(contID)
     local info = MapInfo(contID)
     return (info and info.name) or (FALLBACK[contID] and FALLBACK[contID][1]) or ("Map " .. contID)
 end
+
+---------------------------------------------------------------------------
+-- Place filter: everywhere, a continent or a zone
+---------------------------------------------------------------------------
+
+-- The filter value for a whole continent.
+function ns.ContinentFilter(contID)
+    return "CONT:" .. contID
+end
+
+-- Dropdown entries for zones = { [zone name] = continent ID }: labels by filter value, and the
+-- values in order. Each continent (Kalimdor first) is followed by its zones, indented; zones
+-- whose continent isn't known come last.
+function ns.PlaceFilterList(zones)
+    local byCont, conts, rank = {}, {}, {}
+    for i, id in ipairs(ns.CONTINENT_ORDER) do rank[id] = i end
+    for zone, contID in pairs(zones) do
+        if not byCont[contID] then
+            byCont[contID] = {}
+            table.insert(conts, contID)
+        end
+        table.insert(byCont[contID], zone)
+    end
+    -- Continents without a set place go between the known ones and the unknown.
+    local function Rank(id)
+        if id == ns.UNKNOWN_CONTINENT then return math.huge end
+        return rank[id] or 1000
+    end
+    table.sort(conts, function(a, b)
+        if Rank(a) ~= Rank(b) then return Rank(a) < Rank(b) end
+        return a < b
+    end)
+    local labels, order = { ALL = "All zones" }, { "ALL" }
+    for _, contID in ipairs(conts) do
+        local known = contID ~= ns.UNKNOWN_CONTINENT
+        if known then
+            local key = ns.ContinentFilter(contID)
+            labels[key] = ns.ContinentName(contID)
+            table.insert(order, key)
+        end
+        table.sort(byCont[contID])
+        for _, zone in ipairs(byCont[contID]) do
+            labels[zone] = (known and "    " or "") .. zone
+            table.insert(order, zone)
+        end
+    end
+    return labels, order
+end
+
+-- Whether a zone (on a continent) passes the filter.
+function ns.MatchesPlace(filter, zone, contID)
+    return filter == "ALL" or filter == zone or filter == ns.ContinentFilter(contID)
+end

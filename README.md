@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.12.0)
+## Features (v1.13.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -34,8 +34,8 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   average per writ level and learns from the pouches you open (`/writs pouches`). The route shows about how much its
   pouches will give, and `/writs pouches` and Settings show what your pouches have given you so far.
 - **Buy Writs** tab: a table of the writs on the Auction House (name, level, price of writ + required items,
-  rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in zone
-  and NPC, and hide writs you carry or have done today. Shows when Auctionator or SnapPrice last did a full scan.
+  rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in
+  continent, zone and NPC, and hide writs you carry or have done today. Shows when Auctionator or SnapPrice last did a full scan.
   - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
@@ -103,7 +103,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window, with buttons to start the current stop's writs |
 | `CraftmansHelper/Bindings.xml` | The "Start the next writ" key binding |
 | `CraftmansHelper/Media/` | Textures (the dotted line between table rows) |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py`, `test_routetracker.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py`, `test_routetracker.py`, `test_zones.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |

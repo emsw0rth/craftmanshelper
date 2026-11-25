@@ -49,7 +49,7 @@ local defaults = {
         buySortDesc = nil,         -- "Buy Writs" tab: reversed order; nil = the column's usual order
         buyHideDone = true,        -- "Buy Writs" tab: hide writs already done today
         buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log or bags (bank and alts are tagged)
-        buyZone = "ALL",           -- "Buy Writs" tab: turn-in zone filter
+        buyZone = "ALL",           -- "Buy Writs" tab: turn-in place filter: "ALL", a zone name or ns.ContinentFilter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
         buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active

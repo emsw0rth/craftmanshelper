@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.13.0
+
+- **Filter Buy Writs by continent:** the zone filter is now **Continent or zone**, and lists Kalimdor and Eastern
+  Kingdoms with their zones under them. Pick a continent to see every writ you deliver there, so you can do it all in
+  one trip. The Turn-in NPC filter follows along.
+
 ## 1.12.0
 
 - **Flight directions name the place, not the flight master:** "Fly from Ratchet (The Barrens) to Gadgetzan (Tanaris),
