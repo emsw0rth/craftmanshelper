@@ -8,13 +8,16 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.13.0)
+## Features (v1.14.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
   - Stops are ordered by travel time across both continents, using the flight paths the character knows, boats,
     zeppelins, the Deeprun Tram and, once, the Hearthstone when it saves time. A continent where the character
     knows no flight paths yet gets a reminder to open a flight master's map there.
+  - Can stick to one continent (dropdown in the Route tab, per character).
+  - Goes past flight masters the character doesn't know yet when they're at most a minute off the route ("Pick up the
+    flight path at Booty Bay (Stranglethorn Vale)"). Can be turned off in Settings.
   - Each stop comes with directions ("Fly from Ratchet (The Barrens) to Gadgetzan (Tanaris), about 3 min", "Take the boat from … to …"). The arrow (TomTom, or the
     game's map pin) points at the flight master or dock first, then at the NPC, and moves on as you travel and
     deliver.
@@ -45,7 +48,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
 - **Recipe markers:** recipes at the trainer and in your profession window that craft an item a writ asks for
   get a small icon; hover it to see which writs. The trainer's recipe tooltips list them too.
 - Minimap button (left-click: window, right-click: plan a route), item tooltips on writs and wanted crafts, and a
-  **Shopping** tab of missing crafted items.
+  **Shopping** tab of missing crafted items, which you can filter by turn-in continent, zone and NPC.
 - Turn-in spots are remembered from the quest map marker as soon as you accept a writ, and taken from QuestieDB
   at runtime when it's installed. `/writs export` shares what you've recorded.
 

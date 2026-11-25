@@ -86,6 +86,25 @@ function FlightPaths:MapTaxiNodes()
     return n
 end
 
+-- The flight master a unit is, or nil.
+function FlightPaths.NpcOf(unit)
+    local guid = UnitGUID and UnitGUID(unit)
+    if type(guid) ~= "string" or (issecretvalue and issecretvalue(guid)) then return nil end
+    local npcID = tonumber(select(6, strsplit("-", guid)) or "")
+    return npcID and ns.FlightMasters[npcID] and npcID or nil
+end
+
+-- "New flight path discovered!": the first talk to a flight master needn't open the flight map.
+function FlightPaths:OnInfoMessage(_, _, text)
+    if (issecretvalue and issecretvalue(text)) or not ERR_NEWTAXIPATH or text ~= ERR_NEWTAXIPATH then return end
+    local npcID = FlightPaths.NpcOf("npc") or FlightPaths.NpcOf("target")
+    local known = CH.db.char.flightPaths
+    if npcID and not known[npcID] then
+        known[npcID] = true
+        CH:Print("Learned 1 flight path for route planning.")
+    end
+end
+
 function FlightPaths:OnTaxiMapOpened()
     local mapID = GetTaxiMapID and GetTaxiMapID()
     local nodes = mapID and C_TaxiMap and C_TaxiMap.GetAllTaxiNodes and C_TaxiMap.GetAllTaxiNodes(mapID)
@@ -109,9 +128,8 @@ function FlightPaths:OnTaxiMapOpened()
         end
     end
     -- The flight master you're talking to is known for sure.
-    local guid = UnitGUID and UnitGUID("npc")
-    local npcID = guid and tonumber(select(6, strsplit("-", guid)) or "")
-    if npcID and ns.FlightMasters[npcID] and not known[npcID] then
+    local npcID = FlightPaths.NpcOf("npc")
+    if npcID and not known[npcID] then
         known[npcID] = true
         added = added + 1
     end
@@ -138,6 +156,7 @@ end
 
 function FlightPaths:OnEnable()
     self:RegisterEvent("TAXIMAP_OPENED", "OnTaxiMapOpened")
+    self:RegisterEvent("UI_INFO_MESSAGE", "OnInfoMessage")
     -- Map data is ready once you're in the world.
     if C_Timer then C_Timer.After(2, function() self:MapTaxiNodes() end) end
 end

@@ -275,6 +275,100 @@ check("flight paths known per continent", g.CH.FlightPaths.CountOn(g.CH.FlightPa
       and g.CH.FlightPaths.CountOn(g.CH.FlightPaths, 1415) == 0)
 check("flight time formats", (g.ns.Travel.Minutes(20), g.ns.Travel.Minutes(150), g.ns.Travel.Minutes(3900))
       == ("under a minute", "3 min", "1h 5m"))
+
+# --- Flight paths on the way -------------------------------------------------------
+# Riding 400 yards east through Thousand Needles; only FM 20 known on Kalimdor.
+reset()
+lua.execute("""
+CH.db.char.flightPaths = { [20] = true }
+writ(1, "ready", 1441, 90, 50, "East", "AH")
+player.map, player.x, player.y = 1441, 0.5, 0.5
+ns.FlightMasters = {
+    [20] = { name = "Known", map = 1440, x = 1, y = 1, faction = "AH" },
+    [21] = { name = "Near", map = 1441, x = 70, y = 54, faction = "AH" },   -- just off the road
+    [22] = { name = "Nearer", map = 1441, x = 60, y = 51, faction = "AH" },
+    [23] = { name = "Far", map = 1441, x = 70, y = 5, faction = "AH" },     -- 450 yards off
+    [24] = { name = "Enemy", map = 1441, x = 75, y = 50, faction = "H" },
+    [11800] = { name = "Druids only", map = 1441, x = 80, y = 50, faction = "AH" },
+}
+""")
+
+
+def via_texts(stop):
+    return [stop.via[i].text for i in range(1, len(stop.via) + 1)]
+
+
+NEAR, NEARER = "Pick up the flight path at Near (Zone1441)", "Pick up the flight path at Nearer (Zone1441)"
+lua.execute("CH.db.profile = { pickups = false }")
+plain = Route.Build(Route)
+check("pickups: off in Settings", via_texts(plain.stops[1]) == [], via_texts(plain.stops[1]))
+lua.execute("CH.db.profile = { pickups = true }")
+route = Route.Build(Route)
+check("pickups: in riding order, not the far, enemy or druid ones", via_texts(route.stops[1]) == [NEARER, NEAR],
+      via_texts(route.stops[1]))
+steps = route.stops[1].steps
+kinds = [steps[i].kind for i in range(1, len(steps) + 1)]
+check("pickups: ride on afterwards", kinds == ["pickup", "pickup", "walk"], kinds)
+secs = sum(steps[i].seconds for i in range(1, len(steps) + 1))
+check("pickups: detours in the route's time", abs(route.seconds - secs) < 1e-6 and route.seconds > plain.seconds
+      and abs(route.stops[1].seconds - secs) < 1e-6 and abs(route.legs[1].length - secs) < 1e-6,
+      (route.seconds, secs, plain.seconds))
+lua.execute("CH.db.char.flightPaths = {}")
+check("pickups: none where no flight map was opened", via_texts(Route.Build(Route).stops[1]) == [])
+lua.execute("CH.db.char.flightPaths = { [20] = true }")
+
+Route.Plan(Route)
+check("pickups: arrow at the flight master", g.nav.arrow.point.title == NEARER and g.nav.arrow.point.x == 60)
+Route.Tick(Route, place(1441, 60, 51))
+check("pickups: standing there isn't enough", Route.viaIndex == 1, Route.viaIndex)
+lua.execute("CH.db.char.flightPaths[22] = true")
+Route.Tick(Route, place(1441, 60, 51))
+check("pickups: done once learned", Route.viaIndex == 2 and g.nav.arrow.point.title == NEAR, Route.viaIndex)
+Route.Tick(Route, place(1441, 90, 50))
+check("pickups: skipped at the stop", Route.viaIndex == 3, Route.viaIndex)
+Route.SetCurrent(Route, 1, True, True)
+check("pickups: re-routed by hand, learned one gone", via_texts(Route.GetCurrent(Route)) == [NEAR],
+      via_texts(Route.GetCurrent(Route)))
+Route.Clear(Route)
+
+# Two stops: each flight master is offered once, where it's the shortest detour.
+lua.execute("""CH.db.char.flightPaths = { [20] = true, [22] = true }
+writ(2, "ready", 1441, 70, 56, "AtNear", "AH")""")
+route = Route.Build(Route)
+alltexts = [t for i in range(1, len(route.stops) + 1) for t in via_texts(route.stops[i])]
+check("pickups: once per route", alltexts == [NEAR], alltexts)
+
+# Learning a flight path without the flight map opening.
+lua.execute("""
+function strsplit(sep, s) local out = {}; for p in (s .. sep):gmatch("(.-)%" .. sep) do out[#out + 1] = p end; return unpack(out) end
+ERR_NEWTAXIPATH = "New flight path discovered!"
+function UnitGUID(u) if u == "target" then return "Creature-0-1-1-1-21-00001" end end
+CH.FlightPaths:OnInfoMessage("UI_INFO_MESSAGE", 1, "Something else")
+before = CH.db.char.flightPaths[21]
+CH.FlightPaths:OnInfoMessage("UI_INFO_MESSAGE", 1, ERR_NEWTAXIPATH)""")
+check("discovered flight path learned", g.before is None and g.CH.db.char.flightPaths[21] is True)
+
+# --- One continent -------------------------------------------------------------------
+reset()
+lua.execute("""
+ns.FlightMasters = {}
+writ(1, "ready", 1441, 90, 50, "Kal", "AH")
+writ(2, "ready", 1437, 50, 50, "East", "AH")
+writ(3, "ready", nil)
+CH.db.char.routeContinent = 1415""")
+route = Route.Build(Route)
+check("one continent: only its stops", stop_names(route) == ["East"] and len(route.elsewhere) == 1
+      and route.elsewhere[1].id == 1 and len(route.unroutable) == 1, stop_names(route))
+Route.Plan(Route)
+check("one continent: said when planning", "1 stop in C1415, about" in g.printed[len(g.printed)], g.printed[len(g.printed)])
+Route.Clear(Route)
+lua.execute("states[2] = nil")
+Route.Plan(Route)
+check("one continent: nothing there", g.printed[len(g.printed)] == "Nothing to deliver in C1415 right now.",
+      g.printed[len(g.printed)])
+lua.execute("CH.db.char.routeContinent = nil")
+check("all continents again", stop_names(Route.Build(Route)) == ["Kal"])
+Route.Clear(Route)
 lua.execute("""CH.db.char.flightPaths = {}; ns.FlightMasters = {}
 player.map, player.x, player.y = 1437, 0.5, 0.5""")
 

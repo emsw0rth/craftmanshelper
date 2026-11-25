@@ -16,6 +16,8 @@ local ARRIVE_YARDS = 40        -- this close to a flight master or dock counts a
 local TICK_SECONDS = 1
 local RESTORE_DELAY = 5        -- seconds after login / reload before re-planning a saved route
 local HEARTH_SECONDS = 30      -- 10 s cast plus the trip / loading screen
+local PICKUP_MAX_SECONDS = 60  -- most extra riding for a flight path you don't know yet
+local PICKUP_SKIP = { [11798] = true, [11800] = true } -- Moonglade's druid-only flight masters
 local HEARTH_MIN_SAVING = 60   -- only hearth when it saves at least a minute
 local HEARTH_ARRIVE_YARDS = 80 -- within this of the recorded inn = hearthed
 
@@ -64,7 +66,9 @@ local function BuildVia(steps)
             -- Fallbacks and the Hearthstone have no place to walk to first.
             local board = (step.kind ~= "travel" and step.kind ~= "hearth") and step.from or nil
             local into
-            if step.kind == "cross" then
+            if step.kind == "pickup" then
+                board = step.to
+            elseif step.kind == "cross" then
                 board, into = step.to, ns.Travel.CrossInto(step.from, step.to)
             end
             table.insert(via, { kind = step.kind, text = text, from = step.from, to = step.to, board = board,
@@ -72,6 +76,70 @@ local function BuildVia(steps)
         end
     end
     return via
+end
+
+-- Flight paths to pick up: adds a "pickup" step to the step lists for every flight master you
+-- don't know yet that's at most PICKUP_MAX_SECONDS of extra riding from a stretch you ride
+-- anyway. Each is added once, where it's the shortest detour. Only on continents where you've
+-- opened a flight map: elsewhere the addon can't tell what you know.
+-- taken: { [npcID] = true } to leave out. Returns the extra seconds per list.
+local function AddPickups(lists, graph, taken)
+    local extra = {}
+    for i = 1, #lists do extra[i] = 0 end
+    if CH.db.profile and CH.db.profile.pickups == false then return extra end
+
+    local learned = {} -- [continent] = any flight path known there
+    local function Learned(contID)
+        if learned[contID] == nil then learned[contID] = CH.FlightPaths:CountOn(contID) > 0 end
+        return learned[contID]
+    end
+    local todo = {}
+    for _, node in ipairs(graph.nodes) do
+        if node.kind == "flight-unknown" and not taken[node.id] and not PICKUP_SKIP[node.id]
+            and Learned(select(3, ns.ResolveZone(node.map))) then
+            table.insert(todo, node)
+        end
+    end
+    -- The shortest detour to a flight master over every stretch you ride.
+    local T = ns.Travel
+    local function Best(node)
+        local best
+        for l, steps in ipairs(lists) do
+            for k, step in ipairs(steps) do
+                if (step.kind == "walk" or step.kind == "cross") and T.CanRide(graph, step.from, node)
+                    and T.CanRide(graph, node, step.to) then
+                    local there = T.WalkSeconds(graph, step.from, node)
+                    local on = T.WalkSeconds(graph, node, step.to)
+                    local detour = there + on - T.WalkSeconds(graph, step.from, step.to)
+                    if detour <= PICKUP_MAX_SECONDS and (not best or detour < best.detour - 1e-9) then
+                        best = { detour = detour, list = l, index = k, there = there, on = on }
+                    end
+                end
+            end
+        end
+        return best
+    end
+    -- One at a time, nearest first: each one splits a stretch, which the next are measured on.
+    while #todo > 0 do
+        local pick, at
+        for i = #todo, 1, -1 do
+            local b = Best(todo[i])
+            if not b then
+                table.remove(todo, i)
+                if at then at = at - 1 end -- it was further down the list
+            elseif not pick or b.detour < pick.detour then
+                pick, at = b, i
+            end
+        end
+        if not pick then break end
+        local node = table.remove(todo, at)
+        local steps = lists[pick.list]
+        local step = steps[pick.index]
+        steps[pick.index] = { kind = step.kind, from = node, to = step.to, seconds = pick.on }
+        table.insert(steps, pick.index, { kind = "pickup", from = step.from, to = node, seconds = pick.there })
+        extra[pick.list] = extra[pick.list] + pick.detour
+    end
+    return extra
 end
 
 -- Waypoint title: the NPC and the writs to deliver there, e.g.
@@ -103,7 +171,9 @@ ns._StopTitle = StopTitle -- for tests
 
 function Route:Build()
     local faction = PlayerFactionLetter()
-    local stopsByKey, unroutable, excluded = {}, {}, {}
+    local stopsByKey, unroutable, excluded, elsewhere = {}, {}, {}, {}
+    -- The continent chosen for routes; nil means all of them.
+    local only = CH.db.char.routeContinent
 
     for _, s in pairs(CH.Tracker:GetAllStates()) do
         if IsDeliverable(s) then
@@ -112,6 +182,8 @@ function Route:Build()
                 table.insert(excluded, s)
             elseif not (t and t.map and t.x and t.y) then
                 table.insert(unroutable, s)
+            elseif only and s.continentID ~= only then
+                table.insert(elsewhere, s)
             else
                 -- Same spot (to ~1% of the map) = same stop, whatever the data source.
                 local key = string.format("%d:%d:%d", t.map, math.floor(t.x + 0.5), math.floor(t.y + 0.5))
@@ -196,6 +268,16 @@ function Route:Build()
         else
             stop.steps, stop.seconds = {}, 0
         end
+        prev = stop
+    end
+
+    -- Flight paths to pick up on the way.
+    local lists = {}
+    for k, stop in ipairs(seq) do lists[k] = stop.steps end
+    local extra = AddPickups(lists, graph, {})
+
+    for k, stop in ipairs(seq) do
+        stop.seconds, total = stop.seconds + extra[k], total + extra[k]
         stop.via = BuildVia(stop.steps)
         local leg = legs[#legs]
         if not leg or leg.contID ~= stop.contID then
@@ -205,11 +287,10 @@ function Route:Build()
         table.insert(leg.stops, stop)
         leg.length = leg.length + stop.seconds
         table.insert(flat, stop)
-        prev = stop
     end
 
     return { legs = legs, stops = flat, seconds = total, unroutable = unroutable, excluded = excluded,
-             fromPlayer = start ~= nil, graph = graph, hearthAt = hearthAt }
+             elsewhere = elsewhere, continent = only, fromPlayer = start ~= nil, graph = graph, hearthAt = hearthAt }
 end
 
 ---------------------------------------------------------------------------
@@ -230,7 +311,10 @@ function Route:Plan(restoring)
     local route = self:Build()
     if #route.stops == 0 then
         self.route = route -- keep unroutable/excluded so the UI can explain
-        if not restoring then CH:Print("Nothing to deliver right now.") end
+        if not restoring then
+            CH:Print(route.continent and string.format("Nothing to deliver in %s right now.",
+                ns.ContinentName(route.continent)) or "Nothing to deliver right now.")
+        end
         self:SendMessage(ns.MSG_ROUTE)
         return route
     end
@@ -248,9 +332,10 @@ function Route:Plan(restoring)
     local writs = 0
     for _, stop in ipairs(route.stops) do writs = writs + #stop.writs end
     SetSaved(true)
-    CH:Print(string.format("Route %s: %d writ%s at %d stop%s, about %d min.%s", restoring and "restored" or "planned",
+    CH:Print(string.format("Route %s: %d writ%s at %d stop%s%s, about %d min.%s", restoring and "restored" or "planned",
         writs, writs == 1 and "" or "s",
-        #route.stops, #route.stops == 1 and "" or "s", math.max(1, math.floor((route.seconds or 0) / 60 + 0.5)),
+        #route.stops, #route.stops == 1 and "" or "s",
+        route.continent and (" in " .. ns.ContinentName(route.continent)) or "", math.max(1, math.floor((route.seconds or 0) / 60 + 0.5)),
         CH.Nav:HasTomTom() and "" or " Install TomTom to see every stop on the map."))
     self:SendMessage(ns.MSG_ROUTE)
     return route
@@ -270,6 +355,19 @@ function Route:RerouteFromHere(stop)
     local steps = ns.Travel.Steps(ns.Travel.Search(graph, here), stop)
     table.remove(graph.nodes, here.gi) -- the temporary node is always the last one
     if steps then
+        -- Pickups on the way to the other stops stay there.
+        local taken = {}
+        for _, other in ipairs(self.route.stops) do
+            if other ~= stop and not other.done then
+                for _, step in ipairs(other.steps or {}) do
+                    if step.kind == "pickup" then taken[step.to.id] = true end
+                end
+            end
+        end
+        for _, node in ipairs(graph.nodes) do
+            if node.kind == "flight-unknown" and KnowsFlight(node.id) then taken[node.id] = true end -- since learned
+        end
+        AddPickups({ steps }, graph, taken)
         stop.steps = steps
         stop.via = BuildVia(steps)
     end
@@ -314,6 +412,8 @@ end
 -- Whether a via step is behind you: you reached its flight master / dock, or you're
 -- already on the far side of a crossing (boat, zeppelin, travel to another landmass).
 local function Passed(e, here)
+    -- A flight path counts once you have it; riding past its flight master isn't enough.
+    if e.kind == "pickup" then return KnowsFlight(e.to.id) end
     if e.board then
         local d = ns.Travel.Yards(here, e.board)
         if d and d <= ARRIVE_YARDS then return true end

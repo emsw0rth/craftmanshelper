@@ -857,6 +857,22 @@ function UI:BuildRoute(container)
             self:Redraw()
         end)
     end
+    local cont = AceGUI:Create("Dropdown")
+    cont:SetWidth(170)
+    local contList, contOrder = { ALL = "Both continents" }, { "ALL" }
+    for _, id in ipairs(ns.CONTINENT_ORDER) do
+        if id ~= ns.UNKNOWN_CONTINENT then
+            contList[id] = "Only " .. ns.ContinentName(id)
+            table.insert(contOrder, id)
+        end
+    end
+    cont:SetList(contList, contOrder)
+    cont:SetValue(CH.db.char.routeContinent or "ALL")
+    cont:SetCallback("OnValueChanged", function(_, _, v)
+        CH.db.char.routeContinent = v ~= "ALL" and v or nil
+        if Route.route then Route:Plan() end
+    end)
+    container:AddChild(cont)
     local hint = AceGUI:Create("Label")
     hint:SetWidth(240)
     hint:SetFontObject(GameFontHighlightSmall)
@@ -885,7 +901,8 @@ function UI:BuildRoute(container)
     end
 
     if #route.stops == 0 then
-        AddLabel(scroll, "Nothing to deliver right now.", GameFontHighlight)
+        AddLabel(scroll, route.continent and string.format("Nothing to deliver in %s right now.",
+            ns.ContinentName(route.continent)) or "Nothing to deliver right now.", GameFontHighlight)
     else
         -- Reputation for the whole route, and what's left of it.
         local r = ns.Rep.OfRoute(route)
@@ -904,6 +921,12 @@ function UI:BuildRoute(container)
         AddLabel(scroll, text .. ".", GameFontHighlight)
         local outlook = ns.Rep.Outlook(r.left.rep)
         if outlook then AddLabel(scroll, C(COLOR.dim, outlook), GameFontHighlightSmall) end
+    end
+
+    local left = #(route.elsewhere or {})
+    if left > 0 then
+        AddLabel(scroll, C(COLOR.dim, string.format("%d more writ%s to deliver outside %s.", left,
+            left == 1 and "" or "s", ns.ContinentName(route.continent))), GameFontHighlightSmall)
     end
 
     local current = Route:GetCurrent()
@@ -1000,12 +1023,51 @@ local function PriceSourceText()
 end
 
 -- Filter keys for a writ's turn-in: zone name, its continent, and NPC (name + zone, since names can repeat).
-local function BuyKeys(writID)
+local function PlaceKeys(writID)
     local s = CH.Tracker:GetState(writID)
     local t = s and s.turnIn
     local zone = (s and s.zoneName and s.zoneName ~= "") and s.zoneName or "Unknown"
     local name = t and t.name or "Unknown NPC"
     return { zone = zone, cont = s and s.continentID or ns.UNKNOWN_CONTINENT, npc = name .. ";" .. zone, npcLabel = string.format("%s (%s)", name, zone) }
+end
+
+local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
+
+-- Whether a writ with these keys (PlaceKeys) passes the chosen place and NPC.
+local function MatchesKeys(k, zone, npc)
+    return ns.MatchesPlace(zone, k.zone, k.cont) and (npc == "ALL" or k.npc == npc)
+end
+
+-- Dropdowns for the place and turn-in NPC of the writs in keyOf ({ [writID] = PlaceKeys }). The NPC
+-- list only shows NPCs in the chosen zone or continent. Choices that aren't in the lists (or don't
+-- fit the zone) fall back to "ALL"; returns the place and NPC in effect.
+local function AddPlaceFilters(row, keyOf, zone, npc, onChange)
+    local zones, npcList, npcOrder = {}, { ALL = "All NPCs" }, {}
+    for _, k in pairs(keyOf) do zones[k.zone] = k.cont end
+    local zoneList, zoneOrder = ns.PlaceFilterList(zones)
+    if not zone or not zoneList[zone] then zone = "ALL" end
+    for _, k in pairs(keyOf) do
+        if ns.MatchesPlace(zone, k.zone, k.cont) and not npcList[k.npc] then
+            npcList[k.npc] = k.npcLabel
+            table.insert(npcOrder, k.npc)
+        end
+    end
+    if not npc or not npcList[npc] then npc = "ALL" end
+    table.sort(npcOrder, function(a, b) return SortName(npcList[a], npcList[b]) end)
+    table.insert(npcOrder, 1, "ALL")
+
+    local function Add(label, list, order, value, changed)
+        local d = AceGUI:Create("Dropdown")
+        d:SetLabel(label)
+        d:SetRelativeWidth(HALF)
+        d:SetList(list, order)
+        d:SetValue(value)
+        d:SetCallback("OnValueChanged", function(_, _, v) changed(v) end)
+        row:AddChild(d)
+    end
+    Add("Continent or zone", zoneList, zoneOrder, zone, function(v) onChange(v, "ALL") end)
+    Add("Turn-in NPC", npcList, npcOrder, npc, function(v) onChange(zone, v) end)
+    return zone, npc
 end
 
 -- Where you already have a writ: { log = bool, bags = n, bank = n, alts = { holders } }.
@@ -1040,7 +1102,7 @@ local function ShowBuyTooltip(widget, e)
     CH.Tooltips.suppress = false
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine("Writ", ns.FormatMoneyIcons(e.writPrice), 1, 0.82, 0, 1, 1, 1)
-    local k = BuyKeys(e.writID)
+    local k = PlaceKeys(e.writID)
     GameTooltip:AddDoubleLine("Deliver to", k.npcLabel, 1, 0.82, 0, 1, 1, 1)
     local itemLabel = ItemName(w.item, w.name) .. " x" .. w.count
     GameTooltip:AddDoubleLine(itemLabel, e.itemCost and ns.FormatMoneyIcons(e.itemCost) or "no price",
@@ -1191,7 +1253,6 @@ function UI:BuildBuy(container)
         container:AddChild(row)
         return row
     end
-    local HALF = 0.49 -- a little under half, so rounding never wraps the second widget
     local rowPlace, rowHide, rowPage = Row(), Row(), Row()
 
     -- Sort: the column chosen by clicking its title, and a direction.
@@ -1217,42 +1278,12 @@ function UI:BuildBuy(container)
     HideBox("Hide done today", "buyHideDone", "Hide writs you've already turned in since the daily reset.")
     HideBox("Hide writs I have", "buyHideOwned", "Hide writs that are in your quest log or bags. Writs in your bank or on your other characters stay in the list, marked with where they are.")
 
-    -- Zone and turn-in NPC of every writ; the NPC list only shows NPCs in the chosen zone or continent.
-    local zones, npcList, npcOrder = {}, { ALL = "All NPCs" }, {}
     local keyOf = {}
-    for writID in pairs(ns.Writs) do
-        local k = BuyKeys(writID)
-        keyOf[writID] = k
-        zones[k.zone] = k.cont
-    end
-    -- Saved choices that no longer exist (or don't fit the zone) fall back to "All".
-    local zoneList, zoneOrder = ns.PlaceFilterList(zones)
-    if not zoneList[db.buyZone] then db.buyZone = "ALL" end
-    for _, k in pairs(keyOf) do
-        if ns.MatchesPlace(db.buyZone, k.zone, k.cont) and not npcList[k.npc] then
-            npcList[k.npc] = k.npcLabel
-            table.insert(npcOrder, k.npc)
-        end
-    end
-    if not npcList[db.buyNpc] then db.buyNpc = "ALL" end
-    table.sort(npcOrder, function(a, b) return SortName(npcList[a], npcList[b]) end)
-    table.insert(npcOrder, 1, "ALL")
-
-    local zone = AceGUI:Create("Dropdown")
-    zone:SetLabel("Continent or zone")
-    zone:SetRelativeWidth(HALF)
-    zone:SetList(zoneList, zoneOrder)
-    zone:SetValue(db.buyZone)
-    zone:SetCallback("OnValueChanged", function(_, _, v) db.buyZone = v; db.buyNpc = "ALL"; Refilter() end)
-    rowPlace:AddChild(zone)
-
-    local npc = AceGUI:Create("Dropdown")
-    npc:SetLabel("Turn-in NPC")
-    npc:SetRelativeWidth(HALF)
-    npc:SetList(npcList, npcOrder)
-    npc:SetValue(db.buyNpc)
-    npc:SetCallback("OnValueChanged", function(_, _, v) db.buyNpc = v; Refilter() end)
-    rowPlace:AddChild(npc)
+    for writID in pairs(ns.Writs) do keyOf[writID] = PlaceKeys(writID) end
+    db.buyZone, db.buyNpc = AddPlaceFilters(rowPlace, keyOf, db.buyZone, db.buyNpc, function(zone, npc)
+        db.buyZone, db.buyNpc = zone, npc
+        Refilter()
+    end)
 
     -- Values for the columns Prices.GetBuyList doesn't know how to sort.
     local function SortValue(e)
@@ -1273,8 +1304,7 @@ function UI:BuildBuy(container)
     local list = ns.Prices.GetBuyList(db.buySort, function(writID)
         if planSet then return planSet[writID] or false end
         local k = keyOf[writID]
-        if not ns.MatchesPlace(db.buyZone, k.zone, k.cont) then return false end
-        if db.buyNpc ~= "ALL" and k.npc ~= db.buyNpc then return false end
+        if not MatchesKeys(k, db.buyZone, db.buyNpc) then return false end
         local s = CH.Tracker:GetState(writID)
         if db.buyHideOwned and (s.inLog or (s.writsInBags or 0) > 0) then return false end
         return not (db.buyHideDone and s.status == STATUS.DONE)
@@ -1450,6 +1480,10 @@ function UI:BuildSettings(container)
     AddCheckBox(scroll, "Use your Hearthstone",
         "When it's off cooldown and saves time, the route uses your Hearthstone once.",
         db.useHearth, function(v) db.useHearth = v end)
+    AddCheckBox(scroll, "Pick up flight paths on the way",
+        "When a flight master you don't know yet is at most a minute off your route, the route goes past them. " ..
+        "Only on continents where you've opened a flight master's map.",
+        db.pickups ~= false, function(v) db.pickups = v end)
     local spot = CH.Hearth:GetSpot()
     AddLabel(scroll, spot and C(COLOR.dim, "Hearthstone: " .. spot.name .. " (location learned).")
         or C(COLOR.inbags, "Hearthstone location not learned yet: use your Hearthstone once, or set it at an innkeeper."),
@@ -1632,13 +1666,36 @@ end
 
 function UI:BuildShopping(container)
     container:SetLayout("Flow")
+
+    -- Places of every writ you hold, also those that have their item: a place stays chosen (and
+    -- says it's finished) when you get the last item for it.
+    local char = CH.db.char
+    local keyOf, zone, npc = {}, "ALL", "ALL"
+    for writID, s in pairs(CH.Tracker:GetAllStates()) do
+        if s.inLog or (s.writsInBags or 0) > 0 then keyOf[writID] = PlaceKeys(writID) end
+    end
+    if next(keyOf) then
+        local row = AceGUI:Create("SimpleGroup")
+        row:SetFullWidth(true)
+        row:SetLayout("Flow")
+        container:AddChild(row)
+        zone, npc = AddPlaceFilters(row, keyOf, char.shopZone, char.shopNpc, function(z, n)
+            char.shopZone, char.shopNpc = z, n
+            self.scrollStatus.shopping = nil
+            self:Redraw()
+        end)
+    end
     local scroll = CreateScroll(container, "shopping")
 
     -- crafted item -> { need = total, writs = { states } } for writs you hold but can't deliver yet
-    local byItem, items = {}, {}
-    for _, s in pairs(CH.Tracker:GetAllStates()) do
+    -- (hidden: how many of those writs the filters leave out)
+    local byItem, items, hidden = {}, {}, 0
+    for writID, s in pairs(CH.Tracker:GetAllStates()) do
         local held = s.status == STATUS.ACTIVE or s.status == STATUS.INBAGS
-        if held and s.have < s.need then
+        local missing = held and s.have < s.need
+        if missing and not MatchesKeys(keyOf[writID] or PlaceKeys(writID), zone, npc) then
+            hidden = hidden + 1
+        elseif missing then
             local entry = byItem[s.writ.item]
             if not entry then
                 entry = { item = s.writ.item, name = s.writ.name, need = 0, have = s.have, writs = {} }
@@ -1650,6 +1707,17 @@ function UI:BuildShopping(container)
         end
     end
 
+    local function AddHidden()
+        if hidden == 0 then return end
+        AddLabel(scroll, "\n" .. C(COLOR.dim, string.format("%d more writ%s elsewhere still need%s items.",
+            hidden, hidden == 1 and "" or "s", hidden == 1 and "s" or "")), GameFontHighlightSmall)
+    end
+
+    if #items == 0 and (zone ~= "ALL" or npc ~= "ALL") then
+        AddLabel(scroll, "Nothing to buy or craft here: every writ you hold for this place has its item.", GameFontHighlight)
+        AddHidden()
+        return
+    end
     if #items == 0 then
         AddLabel(scroll, "Nothing to buy or craft: every writ you hold has its item.\n\n" ..
             "This list shows the crafted items still missing for writs in your quest log or bags.", GameFontHighlight)
@@ -1700,6 +1768,7 @@ function UI:BuildShopping(container)
                 s.status == STATUS.INBAGS and "  " .. C(COLOR.inbags, "(not started)") or ""), GameFontHighlightSmall)
         end
     end
+    AddHidden()
 end
 
 ---------------------------------------------------------------------------

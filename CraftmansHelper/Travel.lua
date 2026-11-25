@@ -328,6 +328,8 @@ function Travel.Describe(step)
         local text = string.format("Fly from %s to %s", Travel.FlightPoint(step.from), Travel.FlightPoint(step.to))
         if step.seconds then text = text .. ", about " .. Travel.Minutes(step.seconds) end
         return text
+    elseif step.kind == "pickup" then
+        return "Pick up the flight path at " .. Travel.FlightPoint(step.to)
     elseif step.kind == "travel" then
         return "Travel to " .. PlaceName(step.to)
     elseif step.kind == "cross" then

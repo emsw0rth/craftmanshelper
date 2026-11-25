@@ -53,6 +53,7 @@ local defaults = {
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
         buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
+        pickups = true,            -- send the route past flight masters you don't know yet, when it's on the way
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
     },
     char = {
@@ -60,6 +61,11 @@ local defaults = {
         completed = {},
         -- Flight masters whose flight path this character knows: [npcID] = true (FlightPaths.lua).
         flightPaths = {},
+        -- The continent routes stick to (its map ID); nil = all of them.
+        routeContinent = nil,
+        -- "Shopping" tab filters, as buyZone and buyNpc; nil = all.
+        shopZone = nil,
+        shopNpc = nil,
         -- Where the Hearthstone takes you: { name = bind location, map, x, y } (Hearth.lua).
         hearth = nil,
         -- Rank of the Legacy perk Diplomat (0-5, +2% reputation each) on this character.

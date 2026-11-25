@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.14.0
+
+- **Pick up flight paths on the way:** when a flight master you don't know yet is at most a minute off your route, the
+  route goes past them ("Pick up the flight path at Booty Bay (Stranglethorn Vale)"), and the arrow moves on once you've
+  learned the path. Works on continents where the addon knows at least one of your flight paths. Can be turned off in
+  Settings.
+- **Routes for one continent:** choose Kalimdor or Eastern Kingdoms in the Route tab to deliver only there. It's
+  remembered per character, and the tab says how many writs you're leaving for later.
+- **Filter the Shopping tab** by continent, zone and turn-in NPC, to see only what you need for the writs you're about to
+  deliver.
+- The addon also learns a flight path when you discover it, in case the flight map doesn't open.
+
 ## 1.13.0
 
 - **Filter Buy Writs by continent:** the zone filter is now **Continent or zone**, and lists Kalimdor and Eastern
