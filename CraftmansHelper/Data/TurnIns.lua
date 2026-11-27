@@ -127,5 +127,8 @@ ns.TurnIns = {
     [11707] = { name = "Joy Ar'nareth", map = 1447, x = 30.0, y = 40.1, faction = "AH" },
     [11140] = { name = "Egan", map = 1423, x = 11.4, y = 26.6, faction = "AH" },
     [262044] = { name = "Zelizax", map = 1452, x = 57.6, y = 88.1, faction = "AH" },
+
+    -- From players' /writs export, 2026-11-27
+    [261992] = { name = "Injured Soldier", map = 1423, x = 63.0, y = 43.3, faction = "AH" },
     OLD_TOMBSTONE = { name = "An Old Tombstone", map = 1422, x = 49.9, y = 77.5, object = true },
 }

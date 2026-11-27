@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v2.0.0)
+## Features (v2.0.1)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.

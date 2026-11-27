@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1
+
+- **New turn-in location:** Injured Soldier in Eastern Plaguelands for Imperial Plate Chest, from a player's
+  `/writs export`. 140 of the 150 writs are now known.
+
 ## 2.0.0
 
 - **Craftman's tab in the Auction House:** six lists (Writs, Writ items, Items for my writs, Crates, Crate materials,

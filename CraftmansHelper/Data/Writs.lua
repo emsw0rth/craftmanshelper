@@ -122,7 +122,7 @@ ns.Writs = {
     [264126] = { quest = 94326, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 12416, count = 1, name = "Radiant Belt", turnIn = 7363 },
     [264127] = { quest = 94327, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 7929, count = 1, name = "Orcish War Leggings", turnIn = 257673 },
     [264128] = { quest = 94328, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 7969, count = 1, name = "Mithril Spurs", turnIn = 257750 },
-    [264129] = { quest = 94329, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 12422, count = 1, name = "Imperial Plate Chest" },
+    [264129] = { quest = 94329, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 12422, count = 1, name = "Imperial Plate Chest", turnIn = 261992 },
     [264130] = { quest = 94330, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 20549, count = 1, name = "Darkrune Gauntlets" },
     [264131] = { quest = 94331, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 12775, count = 1, name = "Huge Thorium Battleaxe" },
     [264132] = { quest = 94332, tier = "ARTISAN", profs = {"BLACKSMITHING"}, item = 15872, count = 1, name = "Arcanite Skeleton Key" },
