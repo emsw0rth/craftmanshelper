@@ -1,4 +1,4 @@
--- Auction House price estimates for writ items, from Auctionator, TradeSkillMaster or SnapPrice
+-- Auction House price estimates for writ items, from Auctionator, TradeSkillMaster, auxForever or SnapPrice
 -- (all optional; "AUTO" uses whichever is installed, in that order).
 local ADDON_NAME, ns = ...
 
@@ -120,9 +120,9 @@ Prices.STALE_DAYS = 3
 -- TSM custom price used when no other is set: latest scan's lowest buyout, else market value.
 Prices.DEFAULT_TSM_PRICE = "first(DBMinBuyout, DBMarket)"
 
-Prices.SOURCES = { "AUCTIONATOR", "TSM", "SNAPPRICE", "SCAN" } -- order tried by "AUTO"
-Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster", SNAPPRICE = "SnapPrice",
-                        SCAN = "Craftman's Helper searches" }
+Prices.SOURCES = { "AUCTIONATOR", "TSM", "AUX", "SNAPPRICE", "SCAN" } -- order tried by "AUTO"
+Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster", AUX = "auxForever",
+                        SNAPPRICE = "SnapPrice", SCAN = "Craftman's Helper searches" }
 
 local function Profile()
     local db = ns.CH and ns.CH.db
@@ -137,6 +137,13 @@ end
 local function TSMAPI()
     local api = _G.TSM_API
     if type(api) == "table" and api.GetCustomPriceValue then return api end
+end
+
+-- auxForever's API for other addons (its core/api.lua): GetLatestPrice(itemID) -> copper per item,
+-- days since that look at the item; the price aux shows as "Value" in its tooltips.
+local function AuxAPI()
+    local api = _G.AuxForeverAPI
+    if type(api) == "table" and api.GetLatestPrice then return api end
 end
 
 local function AddOnLoaded(name)
@@ -184,6 +191,16 @@ local SOURCES = {
             local ok, price = pcall(TSMAPI().GetCustomPriceValue, TSMPriceString(), "i:" .. itemID)
             if not ok or type(price) ~= "number" or price <= 0 then return nil end
             return price, nil -- TSM doesn't say how old a price is
+        end,
+    },
+    AUX = {
+        available = function() return AuxAPI() ~= nil end,
+        get = function(itemID)
+            local api = AuxAPI()
+            if api.IsReady and not api.IsReady() then return nil end
+            local ok, price, age = pcall(api.GetLatestPrice, itemID)
+            if not ok or type(price) ~= "number" or price <= 0 then return nil end
+            return price, type(age) == "number" and age or nil
         end,
     },
     -- Searches made in the Auction House's "Craftman's" tab (AHScan.lua).

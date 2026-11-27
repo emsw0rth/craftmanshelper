@@ -197,6 +197,27 @@ check("SnapPrice loaded before its data: installed, no prices yet",
       P.ActiveSource() == "SNAPPRICE" and P.GetItemPrice(1) is None)
 lua.execute("C_AddOns = nil; ns.CH.db.profile.priceSource = 'AUTO'; Auctionator = nil")
 
+# auxForever: its AuxForeverAPI, ahead of SnapPrice in auto.
+lua.execute("""SnapPriceDB = { realms = { ["Doomhowl - Alliance"] = { prices = { [1] = 9000 }, lastScan = 1700000000 } } }
+auxReady = false
+AuxForeverAPI = { version = 1,
+    IsReady = function() return auxReady end,
+    GetLatestPrice = function(id) if id == 1 then return 7700, 3 elseif id == 2 then error("boom") end end }""")
+check("auto picks auxForever before SnapPrice", P.ActiveSource() == "AUX" and P.SourceName() == "auxForever")
+check("auxForever: no price before its history loads", P.GetItemPrice(1) is None)
+lua.execute("auxReady = true")
+price, age = P.GetItemPrice(1)
+check("auxForever: its Value and age in days", price == 7700 and age == 3, (price, age))
+check("auxForever: erroring or unknown item gives no price", P.GetItemPrice(2) is None and P.GetItemPrice(3) is None)
+check("auxForever: no full-scan time", P.LastFullScan() is None)
+lua.execute("Auctionator = AuctionatorStub")
+check("Auctionator still before auxForever", P.ActiveSource() == "AUCTIONATOR")
+lua.execute("ns.CH.db.profile.priceSource = 'AUX'")
+check("auxForever chosen", P.ActiveSource() == "AUX" and P.GetItemPrice(1)[0] == 7700)
+lua.execute("AuxForeverAPI = nil")
+check("auxForever chosen but not installed: no prices", P.ActiveSource() is None)
+lua.execute("ns.CH.db.profile.priceSource = 'AUTO'; Auctionator = nil; SnapPriceDB = nil")
+
 # Coin pouch cashback
 lua.execute("""Auctionator = AuctionatorStub; TSM_API = nil
 prices = { [1] = 14239, [2] = 2500, [100] = 1000, [200] = 1000 }

@@ -1034,6 +1034,8 @@ local function PriceSourceText()
         local t = P.LastFullScan()
         return C(COLOR.dim, "Prices from SnapPrice (lowest buyout). " ..
             (t and ("Last full Auction House scan: " .. Ago(time() - t) .. ".") or "No full Auction House scan yet."))
+    elseif key == "AUX" then
+        return C(COLOR.dim, "Prices from auxForever (its Value for each item).")
     elseif key == "SCAN" then
         return C(COLOR.dim, "Prices from your searches in the Auction House's Craftman's tab.")
     end
@@ -1042,7 +1044,7 @@ local function PriceSourceText()
         return C(COLOR.inbags, P.SOURCE_NAMES[pref] .. " isn't installed, so there are no prices.")
     end
     return C(COLOR.inbags, "No prices yet: search in the Auction House's Craftman's tab, or install Auctionator, " ..
-        "TradeSkillMaster or SnapPrice.")
+        "TradeSkillMaster, auxForever or SnapPrice.")
 end
 
 -- Filter keys for a writ's turn-in: zone name, its continent, and NPC (name + zone, since names can repeat).
@@ -1253,7 +1255,8 @@ function UI:BuildBuy(container)
         local scroll = CreateScroll(container, "buy")
         AddAHButtons(scroll, { { "Search writs at the Auction House", "writs",
             { zone = db.buyZone, npc = db.buyNpc, level = "ALL", hideDone = db.buyHideDone, hideOwned = db.buyHideOwned } } })
-        AddLabel(scroll, "This tab needs Auction House prices from Auctionator, TradeSkillMaster or SnapPrice.\n\n" ..
+        AddLabel(scroll, "This tab needs Auction House prices from Auctionator, TradeSkillMaster, auxForever or " ..
+            "SnapPrice, or your searches in the Auction House's Craftman's tab.\n\n" ..
             "Install one of them and scan the Auction House to see which writs are cheapest to buy. " ..
             "You can choose the price source in the Settings tab.", GameFontHighlight)
         AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
@@ -1657,8 +1660,8 @@ function UI:BuildSettings(container)
         return P.SOURCE_NAMES[key] .. (P.IsInstalled(key) and "" or " (not installed)")
     end
     source:SetList({ AUTO = "Automatic (whichever is installed)", AUCTIONATOR = Label("AUCTIONATOR"), TSM = Label("TSM"),
-                     SNAPPRICE = Label("SNAPPRICE"), SCAN = "Only my Craftman's tab searches" },
-        { "AUTO", "AUCTIONATOR", "TSM", "SNAPPRICE", "SCAN" })
+                     AUX = Label("AUX"), SNAPPRICE = Label("SNAPPRICE"), SCAN = "Only my Craftman's tab searches" },
+        { "AUTO", "AUCTIONATOR", "TSM", "AUX", "SNAPPRICE", "SCAN" })
     source:SetValue(db.priceSource or "AUTO")
     source:SetCallback("OnValueChanged", function(_, _, v) db.priceSource = v; self:Redraw() end)
     scroll:AddChild(source)

@@ -80,7 +80,7 @@ local MAIN = {
         { title = "Buy Writs",
           text = "Writs for sale on the Auction House, with what they cost (item included) and the reputation " ..
               "per gold. The line at the top picks the cheapest writs to your next standing.\n\n" ..
-              "Prices come from Auctionator, TradeSkillMaster, SnapPrice or the addon's own Auction House tab.",
+              "Prices come from Auctionator, TradeSkillMaster, auxForever, SnapPrice or the addon's own Auction House tab.",
           show = ShowTab("buy"), target = Content },
         { title = "Waylaid Crates",
           text = "Fill a crate and hand it in for Merchant's Favor, which buys profession recipes. This tab shows " ..
@@ -176,7 +176,8 @@ local AH = {
               "(not searched yet), * means too few are listed.",
           show = ShowList("writs"), target = AHMark("table") },
         { title = "Buy it",
-          text = "Click a row to open it in the Auction House's Buy screen. Shift-click links it.",
+          text = "Click a row to open it in the Auction House's Buy screen. " ..
+              "Shift-click links it.",
           show = ShowList("writs"), target = AHMark("table") },
         { title = "What you already have",
           text = "Items for my writs: what the writs you hold still need.\nMaterials for my crates: every way to " ..

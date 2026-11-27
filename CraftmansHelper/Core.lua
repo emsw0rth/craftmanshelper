@@ -42,7 +42,7 @@ local defaults = {
         tooltips = true,           -- add writ info to item tooltips
         markRecipes = true,        -- mark trainer and profession recipes that craft a writ item
         includeWritPrice = false,  -- add the writ's own AH price to the estimate and rep per gold
-        priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR", "TSM" or "SNAPPRICE" (Prices.lua)
+        priceSource = "AUTO",      -- "AUTO", "AUCTIONATOR", "TSM", "AUX", "SNAPPRICE" or "SCAN" (Prices.lua)
         tsmPrice = "",             -- TSM custom price string; empty = Prices.DEFAULT_TSM_PRICE
         cashback = true,           -- subtract the coin pouch's average gold from writ costs
         buySort = "price",         -- "Buy Writs" tab: sort column: "name", "level", "price", "rep" or "have"
@@ -59,7 +59,7 @@ local defaults = {
         -- The Auction House's "Craftman's" tab: list shown and its filters (UI/AuctionTab.lua)
         ah = { list = "writs", zone = "ALL", npc = "ALL", level = "ALL", hideDone = true, hideOwned = false,
                crateLevel = "ALL", crateKind = "ALL", rowSort = "price",
-               writItemCost = false, crateMatCost = false },       -- "Buy Writs" tab: show only the cheapest writs to the next standing
+               writItemCost = false, crateMatCost = false },
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         pickups = true,            -- send the route past flight masters you don't know yet, when it's on the way
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
@@ -118,6 +118,7 @@ local HELP = {
     "/writs crates - what Waylaid Crates cost to fill, per Merchant's Favor",
     "/writs settings - open the settings",
     "/writs tutorial - a guided tour of the window",
+    "/writs ahcheck - what was found of TradeSkillMaster's or auxForever's Auction House window",
     "/writs minimap - show / hide the minimap button",
     "/writs resetpos - move the window and route tracker back to the middle of the screen",
     "/writs tooltips - turn writ info in item tooltips on / off",
@@ -155,6 +156,8 @@ function CH:SlashCommand(input)
         self.UI:Show("crates")
     elseif cmd == "tutorial" or cmd == "tour" then
         self.Tours:StartMain()
+    elseif cmd == "ahcheck" then
+        self.AuctionTab:Check()
     elseif cmd == "settings" or cmd == "options" or cmd == "config" then
         self.UI:Show("settings")
     elseif cmd == "resetpos" or cmd == "reset" then

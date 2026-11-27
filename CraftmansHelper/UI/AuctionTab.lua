@@ -3,7 +3,9 @@
 -- item in the Auction House's own Buy screen.
 --
 -- The tab button comes from LibAHTab (MIT), which adds Auction House tabs without tainting the
--- game's UI.
+-- game's UI. TradeSkillMaster and auxForever hide the game's Auction House window behind their own;
+-- a "Craftman's" button in their window switches to the game's window on this tab (see
+-- "TradeSkillMaster and auxForever" below).
 local _, ns = ...
 local CH = ns.CH
 local AceGUI = LibStub("AceGUI-3.0")
@@ -592,29 +594,283 @@ local function Lib()
     return LibStub("LibAHTab-1-0", true)
 end
 
+-- The lists are drawn into one frame (root), moved into whichever holder is showing: the
+-- Auction House tab's, or the panel in auxForever's window.
+function Tab:Use(holder)
+    if not self.root then
+        local root = AceGUI:Create("SimpleGroup")
+        root:SetLayout("Flow")
+        root.noAutoHeight = true
+        self.root = root
+    end
+    self.holder = holder
+    local f = self.root.frame
+    f:SetParent(holder)
+    f:SetFrameLevel(holder:GetFrameLevel() + 1)
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", holder, "TOPLEFT")
+    f:Show()
+end
+
+local function OnHolderShown(self, holder)
+    self:Use(holder)
+    self:Build()
+    if CH.Tours then CH.Tours:OfferAuctionHouse() end
+end
+
 function Tab:CreateTab()
     local lib = Lib()
     if not (lib and AuctionHouseFrame) or lib:DoesIDExist(TAB_ID) then return end
     local holder = CreateFrame("Frame", nil, AuctionHouseFrame)
     holder:SetPoint("TOPLEFT", AuctionHouseFrame, "TOPLEFT", 8, -28)
     holder:SetPoint("BOTTOMRIGHT", AuctionHouseFrame, "BOTTOMRIGHT", -8, 28)
-    self.holder = holder
+    self.tabHolder = holder
+    if not self.holder then self:Use(holder) end
 
-    local root = AceGUI:Create("SimpleGroup")
-    root:SetLayout("Flow")
-    root.noAutoHeight = true
-    root.frame:SetParent(holder)
-    root.frame:ClearAllPoints()
-    root.frame:SetPoint("TOPLEFT", holder, "TOPLEFT")
-    root.frame:Show()
-    self.root = root
-
-    holder:SetScript("OnShow", function()
-        self:Build()
-        if CH.Tours then CH.Tours:OfferAuctionHouse() end
-    end)
-    holder:SetScript("OnSizeChanged", function() if holder:IsShown() then self:Build() end end)
+    holder:SetScript("OnShow", function() OnHolderShown(self, holder) end)
+    holder:SetScript("OnSizeChanged", function() if self.holder == holder and holder:IsShown() then self:Build() end end)
     lib:CreateTab(TAB_ID, holder, "Craftman's", "Craftman's Helper")
+
+    -- TradeSkillMaster and auxForever shrink the game's window to almost nothing while their own
+    -- is showing. The tab is sized to its text when it's made, and text measured that small comes
+    -- out far too wide (the tab ran off the screen), so it's measured again at full size.
+    local function FixWidth()
+        local b = lib:GetButton(TAB_ID)
+        if b and PanelTemplates_TabResize and AuctionHouseFrame:GetScale() >= 0.5 then
+            PanelTemplates_TabResize(b, 20, nil, 70)
+        end
+    end
+    hooksecurefunc(AuctionHouseFrame, "SetScale", function() C_Timer.After(0, FixWidth) end)
+    AuctionHouseFrame:HookScript("OnShow", function() C_Timer.After(0, FixWidth) end)
+    FixWidth()
+end
+
+---------------------------------------------------------------------------
+-- TradeSkillMaster and auxForever
+--
+-- Both replace the Auction House window: they keep the game's window open but shrunk to almost
+-- nothing behind their own, and the Craftman's tab with it. Each has a button that shows the
+-- game's window again: TSM's "WoW UI", aux's "Blizzard UI". A "Craftman's" button next to it
+-- clicks that button (so they switch the way they always do) and then opens this tab.
+--
+-- Neither has an API for this, so their windows are found by what they're made of:
+-- aux: its window's global name (aux_frame); its "Blizzard UI" button is in its top bar.
+-- TSM: TSM_API.IsUIVisible("AUCTION") says its window is open, and it's the largest shown TSM
+--   window (those are in UISpecialFrames, with resizeBtn and resizeIcon fields). Its "WoW UI"
+--   button (the same in every language) is found in it. TSM reuses its frames for its other
+--   windows, so our button only sits in TSM's title bar while that window is open.
+-- Every lookup is checked; when one fails, our button just doesn't appear.
+---------------------------------------------------------------------------
+
+local CHECK_EVERY = 0.2 -- seconds between checks for TSM's window while the Auction House is open
+
+local function AuxFrame()
+    local f = _G.aux_frame
+    if type(f) == "table" and f.GetObjectType and f.body then return f end
+end
+
+local function PlainText(region)
+    local t = region and region.GetText and region:GetText()
+    return type(t) == "string" and (t:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) or nil
+end
+
+-- A button directly in aux's window (its top bar), by its label.
+local function AuxButton(f, text)
+    for _, c in ipairs({ f:GetChildren() }) do
+        if c.GetObjectType and c:GetObjectType() == "Button" and PlainText(c) == text then return c end
+    end
+end
+
+local function TSMShown()
+    local api = _G.TSM_API
+    if not (type(api) == "table" and api.IsUIVisible) then return false end
+    local ok, shown = pcall(api.IsUIVisible, "AUCTION")
+    return ok and shown == true
+end
+
+local function TSMFrame()
+    if not TSMShown() then return nil end
+    local best, bestArea
+    for _, name in ipairs(UISpecialFrames) do
+        local f = _G[name]
+        if type(f) == "table" and f.resizeBtn and f.resizeIcon and f.IsVisible and f:IsVisible() and f:GetLeft() then
+            local s = f:GetEffectiveScale()
+            local area = f:GetWidth() * f:GetHeight() * s * s
+            if not bestArea or area > bestArea then best, bestArea = f, area end
+        end
+    end
+    return best
+end
+
+-- Whether TSM or aux keeps the game's Auction House window (and the tab) out of sight.
+function Tab:GameWindowHidden()
+    return AuctionHouseFrame ~= nil and (AuctionHouseFrame:GetAlpha() < 0.5 or AuctionHouseFrame:GetScale() < 0.5)
+end
+
+local function HasLabel(frame, text)
+    if PlainText(frame) == text then return true end
+    for _, r in ipairs({ frame:GetRegions() }) do
+        if r.GetObjectType and r:GetObjectType() == "FontString" and PlainText(r) == text then return true end
+    end
+end
+
+local function FindButton(frame, text, depth)
+    if depth > 8 then return nil end
+    for _, c in ipairs({ frame:GetChildren() }) do
+        if c.GetObjectType and c:GetObjectType() == "Button" and c:IsVisible() and HasLabel(c, text) then return c end
+        local found = FindButton(c, text, depth + 1)
+        if found then return found end
+    end
+end
+
+-- TSM's "WoW UI" button, while TSM's Auction House window is showing.
+function Tab:TSMSwitchButton()
+    if not self:GameWindowHidden() then return nil end
+    local f = TSMFrame()
+    if not f then return nil end
+    local b = self.tsmSwitch
+    if not (b and b:IsVisible() and HasLabel(b, "WoW UI")) then
+        -- TSM's window has many frames: when the button isn't there, look again only every 2 s.
+        if (self.tsmSwitchRetry or 0) > GetTime() then return nil end
+        b = FindButton(f, "WoW UI", 0)
+        self.tsmSwitch = b
+        self.tsmSwitchRetry = not b and GetTime() + 2 or nil
+    end
+    return b
+end
+
+-- aux's "Blizzard UI" button, while aux's window is showing and the game's is hidden.
+function Tab:AuxSwitchButton()
+    local f = AuxFrame()
+    if not (f and f:IsVisible() and self:GameWindowHidden()) then return nil end
+    return AuxButton(f, "Blizzard UI")
+end
+
+-- Switches from TSM's or aux's window to the game's, on this tab. false when neither is showing
+-- (or its button isn't found).
+function Tab:SwitchToTab()
+    local b = self:TSMSwitchButton() or self:AuxSwitchButton()
+    if not b then return false end
+    b:Click()
+    C_Timer.After(0, function()
+        if AHOpen() and Lib() and Lib():DoesIDExist(TAB_ID) then Lib():SetSelected(TAB_ID) end
+    end)
+    return true
+end
+
+local function ShowButtonTooltip(btn, back)
+    GameTooltip:SetOwner(btn, "ANCHOR_BOTTOM")
+    GameTooltip:AddLine("Craftman's Helper")
+    GameTooltip:AddLine("Switches to the WoW Auction House window on the Craftman's tab: writs, writ items, " ..
+        "crates and crate materials, priced in one search. " .. back, 1, 1, 1, true)
+    GameTooltip:Show()
+end
+
+-- The "Craftman's" button in aux's top bar, in aux's look (copied from its Full scan button).
+function Tab:CreateAuxButton()
+    local f = AuxFrame()
+    if self.auxButton or not f then return end
+    local ref = AuxButton(f, "Full scan")
+    local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+    b:SetSize(ref and ref:GetWidth() or 80, ref and ref:GetHeight() or 26)
+    if ref then
+        -- Left of the last of aux's buttons lined up leftward from Full scan (its settings gear).
+        local last = ref
+        for _ = 1, 10 do
+            local nextOne
+            for _, c in ipairs({ f:GetChildren() }) do
+                if c ~= b and c.GetPoint and c:GetNumPoints() > 0 then
+                    local point, rel, relPoint = c:GetPoint(1)
+                    if point == "RIGHT" and rel == last and relPoint == "LEFT" then nextOne = c; break end
+                end
+            end
+            if not nextOne then break end
+            last = nextOne
+        end
+        b:SetPoint("RIGHT", last, "LEFT", -4, 0)
+    else
+        b:SetPoint("TOPRIGHT", f, "TOPRIGHT", -260, -7)
+    end
+    local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetAllPoints()
+    b:SetFontString(fs)
+    local refFS = ref and ref.GetFontString and ref:GetFontString()
+    local font, size, flags
+    if refFS then font, size, flags = refFS:GetFont() end
+    if font then fs:SetFont(font, size, flags) end
+    b:SetText("Craftman's")
+    if fs:GetStringWidth() + 16 > b:GetWidth() then b:SetWidth(fs:GetStringWidth() + 16) end
+    local backdrop = ref and ref.GetBackdrop and ref:GetBackdrop()
+    if backdrop then
+        b:SetBackdrop(backdrop)
+        b:SetBackdropColor(ref:GetBackdropColor())
+        b:SetBackdropBorderColor(ref:GetBackdropBorderColor())
+    else
+        b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8", edgeFile = "Interface\\Buttons\\WHITE8X8", edgeSize = 1 })
+        b:SetBackdropColor(0.12, 0.12, 0.12, 1)
+        b:SetBackdropBorderColor(0.3, 0.3, 0.32, 1)
+    end
+    b:SetScript("OnClick", function()
+        if not self:SwitchToTab() then
+            CH:Print("Couldn't find auxForever's Blizzard UI button: click it, then the Craftman's tab.")
+        end
+    end)
+    b:SetScript("OnEnter", function(btn) ShowButtonTooltip(btn, "Click aux to bring it back to the front.") end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    self.auxButton = b
+end
+
+-- The "Craftman's" button next to TSM's "WoW UI" button.
+function Tab:CreateTSMButton()
+    if self.tsmButton then return end
+    local b = CreateFrame("Button", nil, UIParent, "UIPanelButtonTemplate")
+    b:SetText("Craftman's")
+    b:SetSize(b:GetFontString():GetStringWidth() + 24, 22)
+    b:SetScript("OnClick", function() self:SwitchToTab() end)
+    b:SetScript("OnEnter", function(btn) ShowButtonTooltip(btn, "Its TSM tab brings you back.") end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:Hide()
+    self.tsmButton = b
+end
+
+local function ReleaseTSMButton(b)
+    b:Hide()
+    b:SetParent(UIParent)
+    b.anchoredTo = nil
+end
+
+-- Shows the button in TSM's window while it's open.
+function Tab:UpdateTSMButton()
+    local switch = self:TSMSwitchButton()
+    if switch then
+        self:CreateTSMButton()
+        local t = self.tsmButton
+        -- In the same bar as the "WoW UI" button, so it's drawn with it (layer, scale, visibility).
+        local bar = switch:GetParent() or UIParent
+        if t:GetParent() ~= bar or t.anchoredTo ~= switch then
+            t:SetParent(bar)
+            t:SetScale(1)
+            t:ClearAllPoints()
+            t:SetPoint("RIGHT", switch, "LEFT", -6, 0)
+            t.anchoredTo = switch
+        end
+        t:SetHeight(math.max(20, switch:GetHeight()))
+        if t:GetFrameLevel() <= switch:GetFrameLevel() then t:SetFrameLevel(switch:GetFrameLevel() + 2) end
+        t:Show()
+    elseif self.tsmButton then
+        ReleaseTSMButton(self.tsmButton)
+    end
+end
+
+function Tab:StartButtons()
+    self:CreateAuxButton()
+    if not self.ticker then self.ticker = C_Timer.NewTicker(CHECK_EVERY, function() self:UpdateTSMButton() end) end
+    self:UpdateTSMButton()
+end
+
+function Tab:StopButtons()
+    if self.ticker then self.ticker:Cancel(); self.ticker = nil end
+    if self.tsmButton then ReleaseTSMButton(self.tsmButton) end
 end
 
 -- Opens the tab on a list (with settings to copy into its filters) and optionally searches it.
@@ -626,7 +882,11 @@ function Tab:Open(list, filters, searchNow)
     ah.list = list
     for k, v in pairs(filters or {}) do ah[k] = v end
     CH.UI.scrollStatus.ah = nil
-    Lib():SetSelected(TAB_ID)
+    if self:SwitchToTab() then
+        -- the tab opens once TSM or aux has switched
+    else
+        Lib():SetSelected(TAB_ID)
+    end
     self:Build()
     if searchNow then self:SearchShown() end
     return true
@@ -661,20 +921,61 @@ end
 function Tab:PLAYER_INTERACTION_MANAGER_FRAME_SHOW(_, kind)
     if Enum and Enum.PlayerInteractionType and kind == Enum.PlayerInteractionType.Auctioneer then
         self:CreateTab()
+        self:StartButtons()
     end
     if CH.UI.Redraw then CH.UI:Redraw() end -- the "Search at the Auction House" buttons
 end
 
 function Tab:PLAYER_INTERACTION_MANAGER_FRAME_HIDE(_, kind)
     if Enum and Enum.PlayerInteractionType and kind == Enum.PlayerInteractionType.Auctioneer then
+        self:StopButtons()
         if CH.UI.Redraw then CH.UI:Redraw() end
     end
+end
+
+-- Also on the Auction House's own events, in case the interaction ones are missed.
+function Tab:AUCTION_HOUSE_SHOW()
+    C_Timer.After(0, function()
+        if not AHOpen() then return end
+        self:CreateTab()
+        self:StartButtons()
+    end)
+end
+
+function Tab:AUCTION_HOUSE_CLOSED()
+    self:StopButtons()
+end
+
+-- /writs ahcheck: what was found of TradeSkillMaster's and auxForever's windows.
+function Tab:Check()
+    local function yes(v) return v and "|cff00ff00yes|r" or "|cffff4040no|r" end
+    CH:Print("Auction House open: " .. yes(AHOpen()) .. ", game window hidden: " ..
+        yes(AHOpen() and self:GameWindowHidden()))
+    CH:Print("TSM window open: " .. yes(TSMShown()) .. ", found: " .. yes(TSMFrame()) ..
+        ", its WoW UI button: " .. yes(self:TSMSwitchButton()) ..
+        ", our button shown: " .. yes(self.tsmButton and self.tsmButton:IsShown()))
+    local function where(f)
+        if not f then return "none" end
+        return string.format("visible %s, left %s, top %s, %sx%s, scale %.3f, alpha %.2f, %s level %d",
+            tostring(f:IsVisible()), tostring(f:GetLeft() and math.floor(f:GetLeft())),
+            tostring(f:GetTop() and math.floor(f:GetTop())), tostring(math.floor(f:GetWidth())),
+            tostring(math.floor(f:GetHeight())), f:GetEffectiveScale(), f:GetEffectiveAlpha(), f:GetFrameStrata(),
+            f:GetFrameLevel())
+    end
+    CH:Print("WoW UI button: " .. where(self:TSMSwitchButton()))
+    CH:Print("Our button: " .. where(self.tsmButton))
+    CH:Print("TSM window: " .. where(TSMFrame()))
+    CH:Print("aux window: " .. yes(AuxFrame() and AuxFrame():IsVisible()) .. ", its Blizzard UI button: " ..
+        yes(self:AuxSwitchButton()) .. ", our button: " .. yes(self.auxButton and self.auxButton:IsVisible()) ..
+        ", checking: " .. yes(self.ticker))
 end
 
 function Tab:OnEnable()
     if not C_AuctionHouse then return end
     self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
     self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
+    self:RegisterEvent("AUCTION_HOUSE_SHOW")
+    self:RegisterEvent("AUCTION_HOUSE_CLOSED")
     self:RegisterMessage(CH.AHScan.MSG_PROGRESS, "OnProgress")
     self:RegisterMessage(ns.MSG_NAMES, "OnUpdated")
     self:RegisterMessage(ns.MSG_UPDATED, "OnUpdated")

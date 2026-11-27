@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1.0
+
+- **TradeSkillMaster and auxForever:** a **Craftman's** button in their Auction House window (next to TSM's
+  "WoW UI", or in aux's top bar) switches to the game's Auction House window on the Craftman's tab.
+- **auxForever prices:** auxForever is a price source (its Value for each item), next to Auctionator,
+  TradeSkillMaster and SnapPrice.
+- **Fixed:** the Craftman's tab could be far too wide and run off the screen after switching from TSM's or aux's
+  window to the game's.
+- `/writs ahcheck` shows what the addon found of TSM's or aux's window, if the button doesn't appear.
+
 ## 2.0.1
 
 - **New turn-in location:** Injured Soldier in Eastern Plaguelands for Imperial Plate Chest, from a player's

@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v2.0.1)
+## Features (v2.1.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -31,7 +31,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   - Uses only your faction's boats, zeppelins and tram.
 - Click a writ, or a zone heading, to set waypoints to its turn-ins.
 - Writ tooltips show an estimated Auction House price and the reputation per gold spent, using prices from
-  Auctionator, TradeSkillMaster (any TSM custom price string) or SnapPrice (lowest buyout from its last full scan). Optionally includes the writ's own price.
+  Auctionator, TradeSkillMaster (any TSM custom price string), auxForever (its Value) or SnapPrice (lowest buyout from its last full scan). Optionally includes the writ's own price.
 - **Coin pouch cashback:** the Coin Pouch each turn-in gives is counted as money back in rep per gold and the
   cheapest way to your next standing ("profit" when it pays more than the writ costs). Starts from Wowhead's
   average per writ level and learns from the pouches you open (`/writs pouches`). The route shows about how much its
@@ -46,6 +46,9 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   lowest price, how many are listed and what the amount you need costs. Click a row to open it in the Auction House's
   own Buy screen. The searches are also a price source: newer than your price addon's price, or the only one without a
   price addon. Buy Writs, Shopping and Crates get a "Search at the Auction House" button while it's open.
+- **TradeSkillMaster and auxForever:** both hide the game's Auction House window behind their own. A **Craftman's**
+  button in their window (next to TSM's "WoW UI", or in aux's top bar) switches to the game's window on the
+  Craftman's tab. `/writs ahcheck` shows what the addon found of their windows, if the button doesn't appear.
 - **Tutorials:** a guided tour of the window on your first login, and one of the Auction House's Craftman's tab
   the first time you open it. Everything but the part being explained is dimmed, with Back, Next and Close tutorial
   buttons. Settings → Reset tutorials (or `/writs tutorial`) shows them again.
@@ -77,7 +80,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
-`/writs shopping`, `/writs all`, `/writs buy`, `/writs crates`, `/writs settings`, `/writs tutorial`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs pouches debug`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs crates`, `/writs settings`, `/writs tutorial`, `/writs ahcheck`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs pouches debug`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
 
 ## Install (development)
 
@@ -104,9 +107,9 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Tracker.lua` | Writ state (done today / in log / in bags / ready), daily reset, turn-in learning |
 | `CraftmansHelper/Alts.lua` | Writs and writ items on each character's bags and bank (account-wide) |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
-| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API, or SnapPrice's saved scan; reputation per tier; coin pouch averages |
+| `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's, TSM's or auxForever's API, or SnapPrice's saved scan; reputation per tier; coin pouch averages |
 | `CraftmansHelper/AHScan.lua` | Searches the Auction House one item at a time and keeps the results (a price source) |
-| `CraftmansHelper/UI/AuctionTab.lua` | The "Craftman's" tab in the Auction House (tab button from LibAHTab, MIT) |
+| `CraftmansHelper/UI/AuctionTab.lua` | The "Craftman's" tab in the Auction House (tab button from LibAHTab, MIT), and its buttons in TradeSkillMaster's and auxForever's windows |
 | `CraftmansHelper/Tutorial.lua` | Guided tours: dims the screen around the part being explained, step card with Back / Next / Close |
 | `CraftmansHelper/UI/Tours.lua` | The two tours (main window, Auction House tab) and when they start |
 | `CraftmansHelper/Crates.lua` | Waylaid Crate costs per Merchant's Favor, and reputation through Forged Delivery Receipts (bundles in `Data/Crates.lua`) |
