@@ -8,7 +8,7 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v1.14.0)
+## Features (v2.0.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
@@ -40,6 +40,19 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   rep per gold, where you already have it), 20 per page. Click a column title to sort by it. Filter by turn-in
   continent, zone and NPC, and hide writs you carry or have done today. Shows when Auctionator or SnapPrice last did a full scan.
   - Picks the cheapest writs to buy to reach your next standing today, counting the writs you already have.
+- **Craftman's tab in the Auction House:** lists of writs, writ items, Waylaid Crates and crate materials, with the
+  same filters as the addon's own tabs, plus **Items for my writs** (what the writs you hold still need) and
+  **Materials for my crates** (every fill for the crates in your bags). **Search** looks each item up in turn and shows the
+  lowest price, how many are listed and what the amount you need costs. Click a row to open it in the Auction House's
+  own Buy screen. The searches are also a price source: newer than your price addon's price, or the only one without a
+  price addon. Buy Writs, Shopping and Crates get a "Search at the Auction House" button while it's open.
+- **Tutorials:** a guided tour of the window on your first login, and one of the Auction House's Craftman's tab
+  the first time you open it. Everything but the part being explained is dimmed, with Back, Next and Close tutorial
+  buttons. Settings → Reset tutorials (or `/writs tutorial`) shows them again.
+- **Crates** tab: every Waylaid Crate with its cheapest fill, the cost (empty crate + fill, less the silver paid at the
+  hand-in), the Merchant's Favor it gives and the gold per Favor. Hover for every fill option and where to hand it in;
+  filter by level, gathered or crafted, and crates you have. Shows your Favor, and what 50 reputation costs through a
+  Forged Delivery Receipt (15 Favor + an empty crate) next to the best writ to buy. Crate tooltips show the cheapest fill.
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
@@ -64,7 +77,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
   Expert/Artisan locations that aren't documented yet.
 
 Commands: `/writs` (toggle window), `/writs route`, `/writs clear`, `/writs tracker`, `/writs why`,
-`/writs shopping`, `/writs all`, `/writs buy`, `/writs settings`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs pouches debug`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
+`/writs shopping`, `/writs all`, `/writs buy`, `/writs crates`, `/writs settings`, `/writs tutorial`, `/writs status`, `/writs learned`, `/writs pouches`, `/writs pouches debug`, `/writs export`, `/writs minimap`, `/writs tooltips`, `/writs resetpos`.
 
 ## Install (development)
 
@@ -79,7 +92,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | Path | What |
 |---|---|
 | `CraftmansHelper/CraftmansHelper.toc` | Addon manifest |
-| `CraftmansHelper/Libs/` | Embedded Ace3 (LibStub, CallbackHandler, AceAddon/Event/Timer/Bucket/DB/Console/GUI) |
+| `CraftmansHelper/Libs/` | Embedded Ace3 (LibStub, CallbackHandler, AceAddon/Event/Timer/Bucket/DB/Console/GUI), LibDataBroker, LibDBIcon, LibAHTab |
 | `CraftmansHelper/Data/Writs.lua` | All 150 writs: writ item ID → quest, tier, professions, required item, count, turn-in key |
 | `CraftmansHelper/Data/TurnIns.lua` | Turn-in NPCs → zone (uiMapID) and coordinates where known |
 | `CraftmansHelper/Data/FlightMasters.lua` | Flight masters with position and faction (generated from QuestieDB) |
@@ -92,6 +105,11 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Alts.lua` | Writs and writ items on each character's bags and bank (account-wide) |
 | `CraftmansHelper/Questie.lua` | Optional runtime turn-in lookup in QuestieDB (`_G.LibQuestieDB`) |
 | `CraftmansHelper/Prices.lua` | Optional Auction House price estimates via Auctionator's or TSM's API, or SnapPrice's saved scan; reputation per tier; coin pouch averages |
+| `CraftmansHelper/AHScan.lua` | Searches the Auction House one item at a time and keeps the results (a price source) |
+| `CraftmansHelper/UI/AuctionTab.lua` | The "Craftman's" tab in the Auction House (tab button from LibAHTab, MIT) |
+| `CraftmansHelper/Tutorial.lua` | Guided tours: dims the screen around the part being explained, step card with Back / Next / Close |
+| `CraftmansHelper/UI/Tours.lua` | The two tours (main window, Auction House tab) and when they start |
+| `CraftmansHelper/Crates.lua` | Waylaid Crate costs per Merchant's Favor, and reputation through Forged Delivery Receipts (bundles in `Data/Crates.lua`) |
 | `CraftmansHelper/Pouches.lua` | Learns how much gold each coin pouch gives when it's opened |
 | `CraftmansHelper/Tooltips.lua` | Writ info in item tooltips |
 | `CraftmansHelper/RecipeMarks.lua` | Writ icons on trainer and profession recipes |
@@ -106,7 +124,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window, with buttons to start the current stop's writs |
 | `CraftmansHelper/Bindings.xml` | The "Start the next writ" key binding |
 | `CraftmansHelper/Media/` | Textures (the dotted line between table rows) |
-| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py`, `test_routetracker.py`, `test_zones.py` |
+| `tests/` | Lua 5.1 tests (`pip install lupa`): `test_solver.py`, `test_route.py`, `test_travel.py`, `test_sources.py`, `test_prices.py`, `test_alts.py`, `test_reputation.py`, `test_pouches.py`, `test_recipemarks.py`, `test_routetracker.py`, `test_zones.py`, `test_crates.py`, `test_ahscan.py` |
 | `tools/gen_flightmasters.py` | Regenerates `Data/FlightMasters.lua` from a QuestieDB TOC |
 | `tools/import_travel.py` | Regenerates `Data/Transports.lua` and `Data/FlightLengths.lua` from EllesmereUI Forever Essentials |
 | `tools/import_locations.py` | Merges `/writs export` text from players into `Data/` (`--dry-run` to preview) |
@@ -182,4 +200,5 @@ Copyright (C) 2026 Emsworth. Released under the [GNU General Public License v3.0
   with their kind permission. Thank you!
 - The list of writs, and some Expert and Artisan turn-in NPCs, come from [Wowhead's Craftsman's Writs guide](https://www.wowhead.com/forever/guide/professions/craftsmans-writs-overview-recipes-rewards) and its quest and NPC pages.
 - Embeds [Ace3](https://github.com/WoWUIDev/Ace3) (see `CraftmansHelper/Libs/Ace3-LICENSE.txt`),
-  [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1) and LibDBIcon-1.0.
+  [LibDataBroker-1.1](https://github.com/tekkub/libdatabroker-1-1), LibDBIcon-1.0 and
+  [LibAHTab](https://github.com/TheMouseNest/LibAHTab) by plusmouse (MIT, see `CraftmansHelper/Libs/LibAHTab/LICENSE`).

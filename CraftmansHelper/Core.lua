@@ -51,7 +51,15 @@ local defaults = {
         buyHideOwned = true,       -- "Buy Writs" tab: hide writs in your quest log or bags (bank and alts are tagged)
         buyZone = "ALL",           -- "Buy Writs" tab: turn-in place filter: "ALL", a zone name or ns.ContinentFilter
         buyNpc = "ALL",            -- "Buy Writs" tab: turn-in NPC filter ("name;zone")
-        buyPlanOnly = false,       -- "Buy Writs" tab: show only the cheapest writs to the next standing
+        buyPlanOnly = false,
+        crateSort = "perFavor",    -- "Crates" tab: sort column (crateSortDesc: reversed; nil = usual order)
+        crateLevel = "ALL",        -- "Crates" tab: "ALL" or a crate level (1 Apprentice .. 4 Artisan)
+        crateKind = "ALL",         -- "Crates" tab: "ALL", "GATHERED" or "CRAFTED"
+        crateOwned = false,        -- "Crates" tab: only crates in your bags or bank
+        -- The Auction House's "Craftman's" tab: list shown and its filters (UI/AuctionTab.lua)
+        ah = { list = "writs", zone = "ALL", npc = "ALL", level = "ALL", hideDone = true, hideOwned = false,
+               crateLevel = "ALL", crateKind = "ALL", rowSort = "price",
+               writItemCost = false, crateMatCost = false },       -- "Buy Writs" tab: show only the cheapest writs to the next standing
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         pickups = true,            -- send the route past flight masters you don't know yet, when it's on the way
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
@@ -76,6 +84,11 @@ local defaults = {
         learned = {},
         -- Writs and writ items each of your characters holds: ["Realm-Name"] = { ... } (Alts.lua)
         characters = {},
+        -- Auction House searches from the "Craftman's" tab: ["Realm - Faction"][itemID] =
+        -- { p = lowest unit price, q = listed, l = { { price, count } }, t = time } (AHScan.lua)
+        scans = {},
+        -- Tutorials already shown: [key] = true (Tutorial.lua; "main" and "ah")
+        tutorials = {},
         -- Gold from opened Coin Pouches: [pouch itemID] = { n, total, min, max } (Pouches.lua)
         pouches = {},
     },
@@ -102,7 +115,9 @@ local HELP = {
     "/writs status - print a summary in chat",
     "/writs shopping - open the shopping list",
     "/writs buy - writs that are cheapest to buy on the Auction House",
+    "/writs crates - what Waylaid Crates cost to fill, per Merchant's Favor",
     "/writs settings - open the settings",
+    "/writs tutorial - a guided tour of the window",
     "/writs minimap - show / hide the minimap button",
     "/writs resetpos - move the window and route tracker back to the middle of the screen",
     "/writs tooltips - turn writ info in item tooltips on / off",
@@ -136,6 +151,10 @@ function CH:SlashCommand(input)
             ((shown and not self.Route:IsActive()) and " (it appears once you plan a route)." or "."))
     elseif cmd == "buy" then
         self.UI:Show("buy")
+    elseif cmd == "crates" or cmd == "crate" then
+        self.UI:Show("crates")
+    elseif cmd == "tutorial" or cmd == "tour" then
+        self.Tours:StartMain()
     elseif cmd == "settings" or cmd == "options" or cmd == "config" then
         self.UI:Show("settings")
     elseif cmd == "resetpos" or cmd == "reset" then

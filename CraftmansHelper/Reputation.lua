@@ -81,6 +81,7 @@ function Rep.Standing()
     if d.nextReactionThreshold <= low then return nil end -- the top standing
     return {
         name = d.name,
+        reaction = d.reaction, -- 4 Neutral, 5 Friendly, ...
         standing = Label(d.reaction),
         value = d.currentStanding - low,
         max = d.nextReactionThreshold - low,

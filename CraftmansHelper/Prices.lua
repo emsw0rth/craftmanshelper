@@ -120,8 +120,9 @@ Prices.STALE_DAYS = 3
 -- TSM custom price used when no other is set: latest scan's lowest buyout, else market value.
 Prices.DEFAULT_TSM_PRICE = "first(DBMinBuyout, DBMarket)"
 
-Prices.SOURCES = { "AUCTIONATOR", "TSM", "SNAPPRICE" } -- order tried by "AUTO"
-Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster", SNAPPRICE = "SnapPrice" }
+Prices.SOURCES = { "AUCTIONATOR", "TSM", "SNAPPRICE", "SCAN" } -- order tried by "AUTO"
+Prices.SOURCE_NAMES = { AUCTIONATOR = "Auctionator", TSM = "TradeSkillMaster", SNAPPRICE = "SnapPrice",
+                        SCAN = "Craftman's Helper searches" }
 
 local function Profile()
     local db = ns.CH and ns.CH.db
@@ -183,6 +184,14 @@ local SOURCES = {
             local ok, price = pcall(TSMAPI().GetCustomPriceValue, TSMPriceString(), "i:" .. itemID)
             if not ok or type(price) ~= "number" or price <= 0 then return nil end
             return price, nil -- TSM doesn't say how old a price is
+        end,
+    },
+    -- Searches made in the Auction House's "Craftman's" tab (AHScan.lua).
+    SCAN = {
+        available = function() local s = ns.CH and ns.CH.AHScan; return s ~= nil and s.HasData() end,
+        get = function(itemID)
+            local s = ns.CH and ns.CH.AHScan
+            if s then return s.Price(itemID) end
         end,
     },
     SNAPPRICE = {
@@ -257,11 +266,22 @@ function Prices.LastFullScan()
     return latest
 end
 
+-- A search in the "Craftman's" tab beats the price source when the source has no price, or
+-- when the search is newer (a source that doesn't say how old its price is counts as a day old).
+local function Searched(itemID, price, age)
+    local p, a
+    if SOURCES.SCAN.available() then p, a = SOURCES.SCAN.get(itemID) end
+    if p and (not price or a < (age or 1)) then return p, a end
+    if not price then return nil end
+    return price, age
+end
+
 -- Unit price in copper and age in days (nil when unknown) for an item, or nil.
 function Prices.GetItemPrice(itemID)
     local key = Prices.ActiveSource()
     if not key then return nil end
-    return SOURCES[key].get(itemID)
+    if key == "SCAN" then return SOURCES.SCAN.get(itemID) end
+    return Searched(itemID, SOURCES[key].get(itemID))
 end
 
 -- Estimate for a writ, or nil when the required item has no price:

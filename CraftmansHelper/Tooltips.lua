@@ -135,6 +135,21 @@ function Tooltips.AddCraftLines(tooltip, itemID, fresh)
     return true
 end
 
+-- On a Waylaid Crate: its cheapest fill, cost and Favor.
+local function AddCrateInfo(tooltip, crateID)
+    local e = ns.CrateCalc.Estimate(crateID)
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Craftman's Helper", HEADER_R, HEADER_G, HEADER_B)
+    tooltip:AddDoubleLine("Merchant's Favor", tostring(e.favor), 1, 1, 1, 1, 1, 1)
+    if e.best then
+        tooltip:AddDoubleLine(string.format("Cheapest fill: %d %s", e.best.count, ItemName(e.best.itemID, e.best.name)),
+            ns.FormatMoneyIcons(e.best.cost), 1, 1, 1, 1, 1, 1)
+        if not e.crateMissing then
+            tooltip:AddDoubleLine("Gold per Favor (with the crate)", ns.FormatMoneyIcons(math.max(0, e.perFavor)), 1, 1, 1, 1, 1, 1)
+        end
+    end
+end
+
 local function OnItemTooltip(tooltip, data)
     if Tooltips.suppress or not CH.db.profile.tooltips then return end
     local id = data and data.id
@@ -143,6 +158,8 @@ local function OnItemTooltip(tooltip, data)
         AddWritInfo(tooltip, id)
     elseif writsByItem[id] then
         AddCraftInfo(tooltip, id, writsByItem[id])
+    elseif ns.Crates[id] then
+        AddCrateInfo(tooltip, id)
     end
 end
 

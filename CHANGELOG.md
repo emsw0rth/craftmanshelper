@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.0.0
+
+- **Craftman's tab in the Auction House:** six lists (Writs, Writ items, Items for my writs, Crates, Crate materials,
+  Materials for my crates) with the same filters as the addon's own tabs. **Search** looks every item up in turn and
+  shows the cheapest buyout, how many are listed and what the amount you need costs; auctions are priced whole and
+  bid-only auctions are left out. Writs show reputation per gold and crates Merchant's Favor per gold, optionally
+  including the writ's item or the crate's cheapest fill. Click a row to open it in the Auction House's Buy screen.
+  Buy Writs, Shopping and Crates get a "Search at the Auction House" button while it's open.
+- **Your searches are prices:** they're used everywhere in the addon when they're newer than your price addon's, or
+  on their own without a price addon.
+- **Crates tab:** every Waylaid Crate with its cheapest fill, its cost, the Merchant's Favor it gives and the gold
+  per Favor, your Favor balance, and what 50 reputation costs through a Forged Delivery Receipt next to the best writ
+  to buy. Crate tooltips show the cheapest fill. `/writs crates` opens it.
+- **Tutorials:** a guided tour of the window on your first login, and one of the Craftman's tab the first time you
+  open it. Settings → Reset tutorials (or `/writs tutorial`) shows them again.
+- **Two rows of tabs** in the window: your writs on top, buying, crates and settings below.
+- **28 more turn-in locations** from QuestieDB and Wowhead: 139 of the 150 writs are now known, including every
+  Journeyman and Expert writ.
+- Embeds LibAHTab by plusmouse (MIT) to add the Auction House tab without tainting the game's UI.
+
 ## 1.14.0
 
 - **Pick up flight paths on the way:** when a flight master you don't know yet is at most a minute off your route, the

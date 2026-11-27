@@ -36,7 +36,7 @@ local FALLBACK = {
     [1449] = { "Un'Goro Crater", KALIMDOR },      [1450] = { "Moonglade", KALIMDOR },
     [1451] = { "Silithus", KALIMDOR },            [1452] = { "Winterspring", KALIMDOR },
     [1454] = { "Orgrimmar", KALIMDOR },           [1456] = { "Thunder Bluff", KALIMDOR },
-    [1457] = { "Darnassus", KALIMDOR },
+    [1457] = { "Darnassus", KALIMDOR },           [2482] = { "Mount Hyjal", KALIMDOR },
 }
 
 local cache = {}

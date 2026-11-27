@@ -182,6 +182,24 @@ local function AddButton(parent, text, width, onClick)
     return b
 end
 
+-- While the Auction House is open: buttons that open its "Craftman's" tab on a list and search it.
+-- buttons: { { text, list, filters } }
+local function AddAHButtons(parent, buttons)
+    local Tab = CH.AuctionTab
+    if not (Tab and Tab:IsAuctionHouseOpen()) then return end
+    local row = AceGUI:Create("SimpleGroup")
+    row:SetFullWidth(true)
+    row:SetLayout("Flow")
+    for _, b in ipairs(buttons) do
+        local button = AceGUI:Create("Button")
+        button:SetText(b[1])
+        button:SetRelativeWidth(0.49)
+        button:SetCallback("OnClick", function() Tab:Open(b[2], b[3], true) end)
+        row:AddChild(button)
+    end
+    parent:AddChild(row)
+end
+
 local function FormatMinutes(seconds)
     return ns.Travel.Minutes(seconds)
 end
@@ -848,7 +866,8 @@ function UI:BuildRoute(container)
     container:SetLayout("Flow")
     local Route = CH.Route
 
-    AddButton(container, Route:IsActive() and "Re-plan route" or "Plan route", 150, function() Route:Plan() end)
+    local plan = AddButton(container, Route:IsActive() and "Re-plan route" or "Plan route", 150, function() Route:Plan() end)
+    self.marks.routePlan = plan.frame
     if Route:IsActive() then
         AddButton(container, "Clear route", 120, function() Route:Clear() end)
         local shown = CH.db.profile.tracker.shown
@@ -873,6 +892,7 @@ function UI:BuildRoute(container)
         if Route.route then Route:Plan() end
     end)
     container:AddChild(cont)
+    self.marks.routeContinent = cont.frame
     local hint = AceGUI:Create("Label")
     hint:SetWidth(240)
     hint:SetFontObject(GameFontHighlightSmall)
@@ -1014,12 +1034,15 @@ local function PriceSourceText()
         local t = P.LastFullScan()
         return C(COLOR.dim, "Prices from SnapPrice (lowest buyout). " ..
             (t and ("Last full Auction House scan: " .. Ago(time() - t) .. ".") or "No full Auction House scan yet."))
+    elseif key == "SCAN" then
+        return C(COLOR.dim, "Prices from your searches in the Auction House's Craftman's tab.")
     end
     local pref = CH.db.profile.priceSource
     if pref and pref ~= "AUTO" then
         return C(COLOR.inbags, P.SOURCE_NAMES[pref] .. " isn't installed, so there are no prices.")
     end
-    return C(COLOR.inbags, "No price addon found: install Auctionator, TradeSkillMaster or SnapPrice for prices.")
+    return C(COLOR.inbags, "No prices yet: search in the Auction House's Craftman's tab, or install Auctionator, " ..
+        "TradeSkillMaster or SnapPrice.")
 end
 
 -- Filter keys for a writ's turn-in: zone name, its continent, and NPC (name + zone, since names can repeat).
@@ -1228,6 +1251,8 @@ function UI:BuildBuy(container)
 
     if not ns.Prices.IsAvailable() then
         local scroll = CreateScroll(container, "buy")
+        AddAHButtons(scroll, { { "Search writs at the Auction House", "writs",
+            { zone = db.buyZone, npc = db.buyNpc, level = "ALL", hideDone = db.buyHideDone, hideOwned = db.buyHideOwned } } })
         AddLabel(scroll, "This tab needs Auction House prices from Auctionator, TradeSkillMaster or SnapPrice.\n\n" ..
             "Install one of them and scan the Auction House to see which writs are cheapest to buy. " ..
             "You can choose the price source in the Settings tab.", GameFontHighlight)
@@ -1334,6 +1359,8 @@ function UI:BuildBuy(container)
     box:SetLayout("Fill")
     container:AddChild(box)
     local scroll = CreateScroll(box, "buy")
+    AddAHButtons(scroll, { { "Search these at the Auction House", "writs",
+        { zone = db.buyZone, npc = db.buyNpc, level = "ALL", hideDone = db.buyHideDone, hideOwned = db.buyHideOwned } } })
     if #list == 0 then
         AddLabel(scroll, "No writs with an Auction House price.\n\n" ..
             "Writs only show up here once your price addon has seen them for sale.", GameFontHighlight)
@@ -1369,6 +1396,208 @@ function UI:BuildBuy(container)
 end
 
 ---------------------------------------------------------------------------
+-- Tab: Crates (Waylaid Crates)
+---------------------------------------------------------------------------
+
+-- Crates table columns. Gold per Favor starts with the cheapest, Favor and Have with the most.
+local CRATE_COLUMNS = {
+    { key = "name", title = "Crate", width = 0.27 },
+    { key = "bundle", title = "Cheapest fill", width = 0.27 },
+    { key = "cost", title = "Cost", width = 0.16 },
+    { key = "favor", title = "Favor", width = 0.08, descFirst = true },
+    { key = "perFavor", title = "Per Favor", width = 0.13, sortName = "gold per Favor" },
+    { key = "have", title = "Have", width = 0.08, descFirst = true },
+}
+
+local function CrateName(crateID)
+    local c = ns.Crates[crateID]
+    local name = ItemName(crateID, "Waylaid Crate: " .. c.name)
+    return (name:gsub("^Waylaid Crate: ", ""))
+end
+
+local function ShowCrateTooltip(frame, e, owned)
+    local K = ns.CrateCalc
+    GameTooltip:SetOwner(frame, "ANCHOR_RIGHT")
+    CH.Tooltips.suppress = true
+    GameTooltip:SetItemByID(e.crateID)
+    CH.Tooltips.suppress = false
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Fill it with any one of these", 1, 0.82, 0)
+    for _, b in ipairs(e.bundles) do
+        local best = b == e.best
+        local r, g, bl = 1, 1, 1
+        if best then r, g, bl = 0.13, 1, 0.13 end
+        GameTooltip:AddDoubleLine(string.format("%d %s", b.count, ItemName(b.itemID, b.name)),
+            b.cost and ns.FormatMoneyIcons(b.cost) or "no price", r, g, bl, 1, 1, 1)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Empty crate", e.cratePrice and ns.FormatMoneyIcons(e.cratePrice) or "no price",
+        1, 0.82, 0, 1, 1, 1)
+    if e.cost then
+        GameTooltip:AddDoubleLine("Total", ns.FormatMoneyIcons(e.cost), 1, 0.82, 0, 1, 1, 1)
+        if e.silver > 0 then
+            GameTooltip:AddDoubleLine("Paid back at the hand-in", "-" .. ns.FormatMoneyIcons(e.silver), 1, 0.82, 0, 1, 1, 1)
+        end
+        GameTooltip:AddDoubleLine("Merchant's Favor", tostring(e.favor), 1, 0.82, 0, 1, 1, 1)
+        GameTooltip:AddDoubleLine("Gold per Favor", ns.FormatMoneyIcons(math.max(0, e.perFavor)), 1, 0.82, 0, 1, 1, 1)
+        if e.crateMissing then
+            GameTooltip:AddLine("Without the crate itself: it has no Auction House price.", 1, 0.63, 0.13, true)
+        end
+    end
+    if e.age and e.age > ns.Prices.STALE_DAYS then
+        GameTooltip:AddLine(string.format("Oldest price is %d days old.", e.age), 1, 0.63, 0.13)
+    end
+    if owned.bags + owned.bank > 0 then
+        GameTooltip:AddLine(" ")
+        if owned.bags > 0 then GameTooltip:AddDoubleLine("In your bags", "x" .. owned.bags, 1, 1, 1, 1, 1, 1) end
+        if owned.bank > 0 then GameTooltip:AddDoubleLine("In your bank", "x" .. owned.bank, 1, 1, 1, 1, 1, 1) end
+        if owned.fill and owned.bags > 0 then
+            GameTooltip:AddLine(string.format("You can fill one now with %d %s.", owned.fill.count,
+                ItemName(owned.fill.itemID, owned.fill.name)), 0.13, 1, 0.13, true)
+        end
+    end
+    local h = K.HandIn()
+    if h then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddDoubleLine("Hand in to", string.format("%s, %s", h.name, h.place), 1, 0.82, 0, 1, 1, 1)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Shift-click to link the crate, ctrl-click to link the cheapest fill.", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end
+
+-- One line on Forged Delivery Receipts: what 50 reputation costs through crates, next to writs.
+local function ReceiptText(list)
+    local K = ns.CrateCalc
+    local standing = ns.Rep.Standing()
+    local r = K.Receipt(list)
+    if not r then
+        return C(COLOR.dim, "Forged Delivery Receipt (from Friendly): 15 Favor + 1 empty crate = 50 reputation. " ..
+            "Needs Auction House prices for crates to work out the cost.")
+    end
+    local text = string.format("Forged Delivery Receipt: %d reputation for about %s (15 Favor from %s + an empty %s), %s rep per gold.",
+        r.rep, ns.FormatMoneyIcons(math.max(0, r.net)), CrateName(r.fill.crateID), CrateName(r.empty.crateID),
+        ns.FormatRepPerGold(r.repPerGold))
+    for _, e in ipairs(ns.Prices.GetBuyList("rep", nil, true)) do
+        if e.repPerGold then
+            text = text .. string.format(" Best writ to buy: %s rep per gold.", ns.FormatRepPerGold(e.repPerGold))
+            break
+        end
+    end
+    if standing and standing.reaction and standing.reaction < 5 then
+        text = text .. C(COLOR.inbags, " You can buy receipts from Friendly.")
+    end
+    return text
+end
+
+function UI:BuildCrates(container)
+    local db = CH.db.profile
+    local K = ns.CrateCalc
+    container:SetLayout("Flow")
+    local function Refresh()
+        self.scrollStatus.crates = nil
+        self:Redraw()
+    end
+
+    local row = AceGUI:Create("SimpleGroup")
+    row:SetFullWidth(true)
+    row:SetLayout("Flow")
+    container:AddChild(row)
+    local THIRD = 0.32
+    local levels = { ALL = "All levels" }
+    local levelOrder = { "ALL" }
+    for i, name in ipairs(K.LEVEL_NAMES) do
+        levels[i] = name
+        table.insert(levelOrder, i)
+    end
+    if db.crateLevel ~= "ALL" and not levels[db.crateLevel] then db.crateLevel = "ALL" end
+    local level = AceGUI:Create("Dropdown")
+    level:SetLabel("Level")
+    level:SetRelativeWidth(THIRD)
+    level:SetList(levels, levelOrder)
+    level:SetValue(db.crateLevel)
+    level:SetCallback("OnValueChanged", function(_, _, v) db.crateLevel = v; Refresh() end)
+    row:AddChild(level)
+    local kinds = { ALL = "Gathered and crafted", GATHERED = "Gathered (herbs, ore, cloth...)", CRAFTED = "Crafted (bars, bolts, parts)" }
+    if not kinds[db.crateKind] then db.crateKind = "ALL" end
+    local kind = AceGUI:Create("Dropdown")
+    kind:SetLabel("Fill with")
+    kind:SetRelativeWidth(THIRD)
+    kind:SetList(kinds, { "ALL", "GATHERED", "CRAFTED" })
+    kind:SetValue(db.crateKind)
+    kind:SetCallback("OnValueChanged", function(_, _, v) db.crateKind = v; Refresh() end)
+    row:AddChild(kind)
+    local mine = AceGUI:Create("CheckBox")
+    mine:SetLabel("Only crates I have")
+    mine:SetRelativeWidth(THIRD)
+    mine:SetValue(db.crateOwned)
+    mine:SetCallback("OnValueChanged", function(_, _, v) db.crateOwned = v; Refresh() end)
+    row:AddChild(mine)
+
+    local scroll = CreateScroll(container, "crates")
+    local balance = K.FavorBalance()
+    AddLabel(scroll, string.format("Merchant's Favor: %s%s", balance and C(COLOR.ready, tostring(balance)) or "?",
+        C(COLOR.dim, "  Hand in filled crates for Favor, which buys profession recipes.")), GameFontHighlight)
+
+    local all = K.List()
+    AddLabel(scroll, ReceiptText(all), GameFontHighlightSmall)
+    AddAHButtons(scroll, {
+        { "Search crates at the Auction House", "crates", { crateLevel = db.crateLevel, crateKind = db.crateKind } },
+        { "Search their materials", "materials", { crateLevel = db.crateLevel, crateKind = db.crateKind } },
+    })
+    if not ns.Prices.IsAvailable() then
+        AddLabel(scroll, "\n" .. PriceSourceText(), GameFontHighlightSmall)
+    end
+
+    local rows = {}
+    for _, e in ipairs(all) do
+        local owned = K.Owned(e.crateID)
+        local show = (db.crateLevel == "ALL" or db.crateLevel == e.level)
+            and (db.crateKind == "ALL" or (db.crateKind == "CRAFTED") == e.crafted)
+            and (not db.crateOwned or owned.bags + owned.bank > 0)
+        if show then
+            local have = owned.bags + owned.bank
+            local haveText = have > 0 and (owned.fill and owned.bags > 0 and C(COLOR.ready, tostring(have)) or tostring(have)) or ""
+            local cost = e.cost and (ns.FormatMoneyIcons(e.cost) .. (e.crateMissing and C(COLOR.inbags, "*") or "")) or C(COLOR.dim, "no price")
+            table.insert(rows, {
+                cells = {
+                    CrateName(e.crateID) .. " " .. C(COLOR.dim, "(" .. K.LEVEL_NAMES[e.level] .. ")"),
+                    e.best and string.format("%d %s", e.best.count, ItemName(e.best.itemID, e.best.name)) or C(COLOR.dim, "no price"),
+                    cost,
+                    tostring(e.favor),
+                    e.perFavor and ns.FormatMoneyIcons(math.max(0, e.perFavor)) or "",
+                    haveText,
+                },
+                sort = {
+                    name = string.format("%d%s", e.level, e.name:lower()), bundle = e.best and e.best.name:lower(),
+                    cost = e.cost, favor = e.favor, perFavor = e.perFavor, have = have, tie = string.format("%d%s", e.level, e.name),
+                },
+                onEnter = function(frame) ShowCrateTooltip(frame, e, owned) end,
+                onClick = function()
+                    if IsModifiedClick("CHATLINK") then
+                        local id = IsControlKeyDown() and e.best and e.best.itemID or e.crateID
+                        local _, link = C_Item.GetItemInfo(id)
+                        if link then InsertLink(link) end
+                    elseif IsControlKeyDown() and e.best then
+                        local _, link = C_Item.GetItemInfo(e.best.itemID)
+                        if link then InsertLink(link) end
+                    end
+                end,
+            })
+        end
+    end
+    local sortKey, sortDesc, sortBy = TableSort(db, "crate", CRATE_COLUMNS, "perFavor", Refresh)
+    SortRows(rows, sortKey, sortDesc)
+    if #rows == 0 then
+        AddLabel(scroll, "\nNo crates match the filters.", GameFontHighlight)
+        return
+    end
+    AddLabel(scroll, C(COLOR.dim, "Cost = an empty crate plus its cheapest fill, less the silver paid at the hand-in. " ..
+        "* = the crate has no price, so only the fill is counted."), GameFontHighlightSmall)
+    AddTable(scroll, "crates", CRATE_COLUMNS, rows, sortKey, sortDesc, sortBy)
+end
+
+---------------------------------------------------------------------------
 -- Tab: Settings
 ---------------------------------------------------------------------------
 
@@ -1387,6 +1616,24 @@ function UI:BuildSettings(container)
     local db = CH.db.profile
     container:SetLayout("Fill")
     local scroll = CreateScroll(container, "settings")
+
+    AddHeading(scroll, "Tutorial")
+    local tutorialRow = AceGUI:Create("SimpleGroup")
+    tutorialRow:SetFullWidth(true)
+    tutorialRow:SetLayout("Flow")
+    scroll:AddChild(tutorialRow)
+    local reset = AddButton(tutorialRow, "Reset tutorials", 160, function()
+        CH.Tutorial:Reset()
+        CH:Print("Tutorials reset: the tour of this window starts the next time you log in or /reload, and the " ..
+            "Auction House tour the next time you open its Craftman's tab.")
+    end)
+    AddButton(tutorialRow, "Start the tour now", 180, function() CH.Tours:StartMain() end)
+    local orType = AceGUI:Create("Label")
+    orType:SetWidth(170)
+    orType:SetFontObject(GameFontHighlightSmall)
+    orType:SetText(C(COLOR.dim, "  Or type /writs tutorial."))
+    tutorialRow:AddChild(orType)
+    self.marks.settingsReset = reset.frame
 
     AddHeading(scroll, "Tooltips")
     local writPrice
@@ -1410,8 +1657,8 @@ function UI:BuildSettings(container)
         return P.SOURCE_NAMES[key] .. (P.IsInstalled(key) and "" or " (not installed)")
     end
     source:SetList({ AUTO = "Automatic (whichever is installed)", AUCTIONATOR = Label("AUCTIONATOR"), TSM = Label("TSM"),
-                     SNAPPRICE = Label("SNAPPRICE") },
-        { "AUTO", "AUCTIONATOR", "TSM", "SNAPPRICE" })
+                     SNAPPRICE = Label("SNAPPRICE"), SCAN = "Only my Craftman's tab searches" },
+        { "AUTO", "AUCTIONATOR", "TSM", "SNAPPRICE", "SCAN" })
     source:SetValue(db.priceSource or "AUTO")
     source:SetCallback("OnValueChanged", function(_, _, v) db.priceSource = v; self:Redraw() end)
     scroll:AddChild(source)
@@ -1593,6 +1840,53 @@ function UI:ResetPosition()
     end
 end
 
+-- The last tab of each row of the main window's tab bar.
+local TAB_ROW_ENDS = { 4, 7 }
+
+-- Lays an AceGUI TabGroup's tabs out in fixed rows (rowEnds = the last tab of each row), each
+-- row stretched to the full width, the way AceGUI does it. Keeps AceGUI's own layout when a row
+-- doesn't fit the width.
+local function ForceTabRows(widget, rowEnds)
+    local tabs, width = widget.tabs, widget.frame.width or widget.frame:GetWidth() or 0
+    if not (tabs and widget.tablist and #widget.tablist == rowEnds[#rowEnds]) or width <= 0 then return end
+    local OVERLAP = 10 -- each tab starts this far inside the one before it
+    local function Sides(tab) return 2 * tab.Left:GetWidth() end
+    local function TextWidth(tab) return tab:GetFontString():GetStringWidth() end
+    local first = 1
+    for _, last in ipairs(rowEnds) do
+        local used = 0
+        for i = first, last do used = used + TextWidth(tabs[i]) + Sides(tabs[i]) end
+        if used - OVERLAP * (last - first) > width then return end
+        first = last + 1
+    end
+    first = 1
+    for row, last in ipairs(rowEnds) do
+        local used = 0
+        for i = first, last do used = used + TextWidth(tabs[i]) + Sides(tabs[i]) end
+        local pad = (width + OVERLAP * (last - first) - used) / (last - first + 1)
+        for i = first, last do
+            local tab = tabs[i]
+            local middle = TextWidth(tab) + pad
+            tab.Middle:SetWidth(middle)
+            if tab.MiddleDisabled then tab.MiddleDisabled:SetWidth(middle) end
+            tab:SetWidth(middle + Sides(tab))
+            local highlight = tab.GetHighlightTexture and tab:GetHighlightTexture()
+            if highlight then highlight:SetWidth(middle + Sides(tab)) end
+            tab:ClearAllPoints()
+            if i == first then
+                tab:SetPoint("TOPLEFT", widget.frame, "TOPLEFT", 0, -7 - (row - 1) * 20)
+            else
+                tab:SetPoint("LEFT", tabs[i - 1], "RIGHT", -OVERLAP, 0)
+            end
+        end
+        first = last + 1
+    end
+    widget.borderoffset = 10 + #rowEnds * 20
+    widget.border:SetPoint("TOPLEFT", 1, -widget.borderoffset)
+    local height = widget.frame.height or widget.frame:GetHeight()
+    if height and height > 0 then widget:OnHeightSet(height) end
+end
+
 function UI:Create()
     local frame = AceGUI:Create("Frame")
     frame:SetTitle("Craftman's Helper")
@@ -1616,13 +1910,22 @@ function UI:Create()
         { text = "My Writs", value = "mine" },
         { text = "Route", value = "route" },
         { text = "Shopping", value = "shopping" },
-        { text = "Buy Writs", value = "buy" },
         { text = "All Writs", value = "all" },
+        { text = "Buy Writs", value = "buy" },
+        { text = "Crates", value = "crates" },
         { text = "Settings", value = "settings" },
     })
+    -- Always two rows of tabs: your writs, then buying and settings.
+    local BuildTabs = tabs.BuildTabs
+    tabs.BuildTabs = function(widget)
+        BuildTabs(widget)
+        ForceTabRows(widget, TAB_ROW_ENDS)
+    end
+    tabs:BuildTabs()
     tabs:SetCallback("OnGroupSelected", function(container, _, group)
         self.currentTab = group
         self.pendingScroll = nil
+        wipe(self.marks) -- parts of the tab the tutorial points at (Tours.lua)
         container:ReleaseChildren()
         if group == "all" then
             self:BuildAll(container)
@@ -1632,6 +1935,8 @@ function UI:Create()
             self:BuildShopping(container)
         elseif group == "buy" then
             self:BuildBuy(container)
+        elseif group == "crates" then
+            self:BuildCrates(container)
         elseif group == "settings" then
             self:BuildSettings(container)
         else
@@ -1726,6 +2031,7 @@ function UI:BuildShopping(container)
 
     table.sort(items, function(a, b) return SortName(ItemName(a.item, a.name), ItemName(b.item, b.name)) end)
     AddHeading(scroll, string.format("%d item%s missing", #items, #items == 1 and "" or "s"))
+    AddAHButtons(scroll, { { "Search these at the Auction House", "myitems", { zone = zone, npc = npc } } })
 
     for _, e in ipairs(items) do
         local missing = math.max(0, e.need - e.have)
@@ -1824,8 +2130,18 @@ end
 
 function UI:OnEnable()
     self.scrollStatus = {}
+    self.marks = {}
     self.currentTab = "mine"
     self:RegisterMessage(ns.MSG_UPDATED, "Redraw")
     self:RegisterMessage(ns.MSG_NAMES, "Redraw")
     self:RegisterMessage(ns.MSG_ROUTE, "Redraw")
 end
+
+-- Helpers shared with the Auction House tab (UI/AuctionTab.lua).
+UI.Kit = {
+    C = C, COLOR = COLOR, ItemName = ItemName, ItemIcon = ItemIcon, InsertLink = InsertLink,
+    AddLabel = AddLabel, AddButton = AddButton, CreateScroll = CreateScroll,
+    AddTable = AddTable, TableSort = TableSort, SortRows = SortRows,
+    PlaceKeys = PlaceKeys, AddPlaceFilters = AddPlaceFilters, MatchesKeys = MatchesKeys,
+    PriceSourceText = PriceSourceText,
+}

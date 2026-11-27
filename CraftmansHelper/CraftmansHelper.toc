@@ -2,12 +2,12 @@
 ## Title: Craftman's Helper
 ## Notes: Tracks your daily Craftsman's Writs for Azeroth Commerce Authority / Durotar Supply and Logistics reputation and plans the delivery route.
 ## Author: Emsworth
-## Version: 1.14.0
+## Version: 2.0.0
 ## SavedVariables: CraftmansHelperDB
 ## OptionalDeps: TomTom, QuestieDB, Questie, Auctionator, TradeSkillMaster, SnapPrice
 ## X-License: GPL-3.0
 ## X-Website: https://github.com/emsw0rth/craftmanshelper
-## X-Credits: Travel data (boats, zeppelins, flight lengths) by Glyalith (EllesmereUI); turn-in and flight master data from QuestieDB
+## X-Credits: Travel data (boats, zeppelins, flight lengths) by Glyalith (EllesmereUI); turn-in and flight master data from QuestieDB; LibAHTab by plusmouse (MIT)
 ## IconTexture: Interface\Icons\INV_Misc_Note_01
 
 embeds.xml
@@ -18,6 +18,7 @@ Data\FlightMasters.lua
 Data\Transports.lua
 Data\FlightLengths.lua
 Data\Crossings.lua
+Data\Crates.lua
 
 Core.lua
 Zones.lua
@@ -25,6 +26,8 @@ Questie.lua
 Tracker.lua
 Alts.lua
 Prices.lua
+Crates.lua
+AHScan.lua
 Pouches.lua
 Reputation.lua
 Nav.lua
@@ -34,7 +37,10 @@ FlightPaths.lua
 Hearth.lua
 Route.lua
 Tooltips.lua
+Tutorial.lua
 RecipeMarks.lua
 Minimap.lua
 UI\MainFrame.lua
 UI\RouteTracker.lua
+UI\AuctionTab.lua
+UI\Tours.lua
