@@ -9,6 +9,8 @@
   per route, like the Hearthstone. They can misfire, so they're off until you turn them on in Settings.
 - New settings under Route planning, shown only for the teleports your character has.
 - Where each teleport lands is learned the first time you use it.
+- **Fixed:** routes never used your Hearthstone if you carried the Scarlet Hearthstone instead of the regular one.
+  The Scarlet Hearthstone (and its toy) now counts.
 
 ## 2.1.0
 

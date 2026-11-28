@@ -193,6 +193,21 @@ check("hearth: no Hearthstone in bags", H.GetOption(H) is None)
 lua.execute("count = 1; CH.db.profile.useHearth = false")
 check("hearth: setting off", H.GetOption(H) is None)
 
+# Other hearthstones: Forever's Scarlet Hearthstone (the item 284163, or its toy 284164).
+lua.execute("""CH.db.profile.useHearth = true
+bags = { [284163] = 1 }
+C_Item = { GetItemCount = function(id) return bags[id] or 0 end }
+cds = { [284163] = { 0, 0 } }
+C_Container = { GetItemCooldown = function(id) local c = cds[id] or { 0, 0 } return c[1], c[2] end }""")
+check("hearth: the Scarlet Hearthstone counts", H.GetOption(H) is not None and H.ReadyIn(H) == 0)
+lua.execute("bags = { [6948] = 1, [284163] = 1 }; cds[6948] = { 900, 3600 }")
+check("hearth: the soonest ready of several", H.ReadyIn(H) == 0)
+lua.execute("bags = {}; toys = { [284164] = true }; function PlayerHasToy(id) return toys[id] == true end")
+check("hearth: the Scarlet Hearthstone toy counts", H.ReadyIn(H) == 0)
+lua.execute("toys = {}")
+check("hearth: none at all", H.ReadyIn(H) is None and H.GetOption(H) is None)
+lua.execute("PlayerHasToy = nil")
+
 # Faction links: a Horde player never boards an Alliance boat, and vice versa.
 lua.execute("""ns.Transports = {
     { kind = 'boat', faction = 'A', from = { map = 1437, x = 5, y = 60 }, to = { map = 1438, x = 70, y = 55 } },

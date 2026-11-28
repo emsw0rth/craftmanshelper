@@ -10,7 +10,10 @@ local CH = ns.CH
 local Hearth = CH:NewModule("Hearth", "AceEvent-3.0")
 CH.Hearth = Hearth
 
-local HEARTHSTONE_ITEM = 6948
+-- Hearthstones in the bags: the Hearthstone, and the Scarlet Hearthstone that Forever's Scarlet
+-- Hearthstone toy creates. The toy itself counts too: it gives you that item.
+local HEARTHSTONE_ITEMS = { 6948, 284163 }
+local HEARTHSTONE_TOYS = { 284164 }
 local HEARTHSTONE_SPELL = 8690
 local ARRIVAL_DELAY = 3 -- seconds after the cast before your position is the inn
 
@@ -40,15 +43,32 @@ function Hearth:GetSpot()
     if h and h.map and name and h.name == name then return h end
 end
 
--- Seconds until the Hearthstone can be used (0 when ready), or nil without one in your bags.
-function Hearth:ReadyIn()
-    local count = C_Item and C_Item.GetItemCount and C_Item.GetItemCount(HEARTHSTONE_ITEM) or 0
-    if count == 0 then return nil end
+local function ItemReadyIn(itemID)
     local getCooldown = (C_Container and C_Container.GetItemCooldown) or GetItemCooldown
     if not getCooldown then return 0 end
-    local start, duration = getCooldown(HEARTHSTONE_ITEM)
+    local start, duration = getCooldown(itemID)
     if not (start and duration) or start == 0 or duration <= 1.5 then return 0 end -- 1.5: global cooldown
     return math.max(0, start + duration - GetTime())
+end
+
+-- Seconds until a hearthstone can be used (0 when ready; the soonest of the ones you have), or
+-- nil without any.
+function Hearth:ReadyIn()
+    local count = (C_Item and C_Item.GetItemCount) or GetItemCount
+    local best
+    for _, id in ipairs(HEARTHSTONE_ITEMS) do
+        if count and (count(id) or 0) > 0 then
+            local r = ItemReadyIn(id)
+            if not best or r < best then best = r end
+        end
+    end
+    for _, id in ipairs(HEARTHSTONE_TOYS) do
+        if PlayerHasToy and PlayerHasToy(id) then
+            local r = ItemReadyIn(id)
+            if not best or r < best then best = r end
+        end
+    end
+    return best
 end
 
 -- What the route planner needs: { name, map, x, y, readyIn } or nil when the
@@ -61,8 +81,23 @@ function Hearth:GetOption()
     return { name = spot.name, map = spot.map, x = spot.x, y = spot.y, readyIn = readyIn }
 end
 
+-- The spells that take you to your inn: the Hearthstone's, and the other hearthstones' own.
+local hearthSpells
+local function HearthSpells()
+    if not hearthSpells then
+        hearthSpells = { [HEARTHSTONE_SPELL] = true }
+        if C_Item and C_Item.GetItemSpell then
+            for _, id in ipairs(HEARTHSTONE_ITEMS) do
+                local _, spellID = C_Item.GetItemSpell(id)
+                if spellID then hearthSpells[spellID] = true end
+            end
+        end
+    end
+    return hearthSpells
+end
+
 function Hearth:OnSpellcast(_, unit, _, spellID)
-    if unit == "player" and spellID == HEARTHSTONE_SPELL then
+    if unit == "player" and HearthSpells()[spellID] then
         C_Timer.After(ARRIVAL_DELAY, function() self:Record("arrived") end)
     end
 end
