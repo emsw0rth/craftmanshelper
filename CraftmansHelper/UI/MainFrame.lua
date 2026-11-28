@@ -907,7 +907,8 @@ function UI:BuildRoute(container)
         AddLabel(scroll, "Plan a route to visit every turn-in for the writs you can deliver right now: writs " ..
             "that are ready, plus writs in your bags that you have the item for (start them before you arrive).\n\n" ..
             "Stops are ordered by the quickest way round from where you are, using the flight paths you know, " ..
-            "boats and zeppelins, across both continents, and your Hearthstone when it saves time.\n\n" ..
+            "boats and zeppelins, across both continents, and your Hearthstone and teleports when they save " ..
+            "time.\n\n" ..
             "The arrow moves on to the next stop each time you deliver.", GameFontHighlight)
         if CH.FlightPaths:Count() == 0 then
             AddLabel(scroll, "\n" .. C(COLOR.inbags, "Open a flight master's map once on each continent, so the " ..
@@ -1730,6 +1731,25 @@ function UI:BuildSettings(container)
     AddCheckBox(scroll, "Use your Hearthstone",
         "When it's off cooldown and saves time, the route uses your Hearthstone once.",
         db.useHearth, function(v) db.useHearth = v end)
+    -- Teleports: only the kinds this character has.
+    local TP = CH.Teleports
+    if TP:Has("mage") then
+        AddCheckBox(scroll, "Use mage teleports",
+            "The route teleports you to a city when that's quicker, as often as it helps, while you carry Runes " ..
+            "of Teleportation (never more casts than you have runes).",
+            db.useTeleports ~= false, function(v) db.useTeleports = v end)
+    end
+    if TP:Has("druid") then
+        AddCheckBox(scroll, "Use Teleport: Moonglade",
+            "The route teleports you to Moonglade when that's quicker, for example to fly on from its druid flight " ..
+            "masters.", db.useMoonglade ~= false, function(v) db.useMoonglade = v end)
+    end
+    if TP:Has("device") then
+        AddCheckBox(scroll, "Use engineering transporters",
+            "Ultrasafe Transporter: Gadgetzan and Dimensional Ripper - Everlook: the route uses one once, when it's " ..
+            "off cooldown and saves time. They can misfire and send you somewhere else, so this is off unless you " ..
+            "turn it on.", db.useEngineering == true, function(v) db.useEngineering = v end)
+    end
     AddCheckBox(scroll, "Pick up flight paths on the way",
         "When a flight master you don't know yet is at most a minute off your route, the route goes past them. " ..
         "Only on continents where you've opened a flight master's map.",

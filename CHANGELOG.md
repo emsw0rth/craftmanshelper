@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.0
+
+- **Teleports in route planning:** mage city teleports and Teleport: Moonglade can be used from any stop, as often
+  as they save time. Mage teleports only while you carry Runes of Teleportation, and never more casts than you
+  have runes. Druids can also pick up Moonglade's druid-only flight paths on the way.
+- **Engineering transporters** (Ultrasafe Transporter: Gadgetzan, Dimensional Ripper - Everlook) can be used once
+  per route, like the Hearthstone. They can misfire, so they're off until you turn them on in Settings.
+- New settings under Route planning, shown only for the teleports your character has.
+- Where each teleport lands is learned the first time you use it.
+
 ## 2.1.0
 
 - **TradeSkillMaster and auxForever:** a **Craftman's** button in their Auction House window (next to TSM's

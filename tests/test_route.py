@@ -414,6 +414,60 @@ check("hearth: passed at the inn", Route.viaIndex == 2)
 Route.Clear(Route)
 lua.execute("CH.Hearth = nil")
 
+# --- Teleports --------------------------------------------------------------------
+# The same two stops; a mage teleport landing in Ashenvale, usable from anywhere.
+reset()
+lua.execute("""
+ns.Transports = {}
+writ(1, "ready", 1437, 50, 55, "Near", "AH")
+writ(2, "ready", 1440, 50, 50, "Over", "AH")
+player.map, player.x, player.y = 1437, 0.5, 0.5
+runes = 5
+tpOnce = {}
+CH.Teleports = {
+    Anywhere = function(self, mage)
+        if mage == false then return {}, runes end
+        return { { key = "TOWN", kind = "mage", name = "Town", map = 1440, x = 52, y = 50,
+                   text = "Teleport to Town", rune = true } }, runes
+    end,
+    Once = function() return tpOnce end,
+}
+""")
+route = Route.Build(Route)
+over = route.stops[2]
+kinds = [over.steps[i].kind for i in range(1, len(over.steps) + 1)]
+check("teleport: used to reach the far stop", stop_names(route) == ["Near", "Over"] and kinds == ["teleport", "walk"],
+      (stop_names(route), kinds))
+check("teleport: directions", over.via[1].text == "Teleport to Town", over.via[1].text)
+check("teleport: quicker than the fallback", route.seconds < 900, route.seconds)
+
+lua.execute("runes = 0")
+route = Route.Build(Route)
+check("teleport: not without runes", route.seconds >= 900, route.seconds)
+
+# Following: the teleport step is passed once you're in its zone.
+lua.execute("runes = 5; states = {}; writ(2, 'ready', 1440, 50, 50, 'Over', 'AH')")
+Route.Plan(Route)
+Route.Tick(Route, place(1440, 10, 10))
+check("teleport: passed in its zone", Route.viaIndex == 2, Route.viaIndex)
+Route.Clear(Route)
+
+# An engineering transporter: once per route, like the Hearthstone.
+lua.execute("""
+states = {}; writ(1, "ready", 1437, 50, 55, "Near", "AH"); writ(2, "ready", 1440, 50, 50, "Over", "AH")
+CH.Teleports.Anywhere = function() return {}, 0 end
+tpOnce = { { key = "GADGETZAN", kind = "device", name = "Gadgetzan", map = 1440, x = 52, y = 50,
+             text = "Use your Transporter", readyIn = 0 } }
+""")
+route = Route.Build(Route)
+over = route.stops[2]
+check("transporter: used once", route.teleportAt == 2 and route.hearthAt is None, (route.teleportAt, route.hearthAt))
+check("transporter: directions", over.via[1].text == "Use your Transporter", over.via[1].text)
+lua.execute("tpOnce[1].readyIn = 100000")
+route = Route.Build(Route)
+check("transporter: not while on cooldown", route.teleportAt is None and route.seconds >= 900, route.seconds)
+lua.execute("CH.Teleports = nil")
+
 # Back to the three-stop set used below.
 reset()
 lua.execute("""

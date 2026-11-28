@@ -8,12 +8,13 @@ A World of Warcraft: Forever addon for Craftsman's Writs: the daily crafting ord
 Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-helper) ·
 [Wago](https://addons.wago.io/addons/craftmans-writ-helper)
 
-## Features (v2.1.0)
+## Features (v2.2.0)
 
 - **Route** tab: plans a delivery route over every writ you can hand in right now.
   - Writs delivered to the same NPC become one stop.
   - Stops are ordered by travel time across both continents, using the flight paths the character knows, boats,
-    zeppelins, the Deeprun Tram and, once, the Hearthstone when it saves time. A continent where the character
+    zeppelins, the Deeprun Tram, teleports (mage city teleports and Teleport: Moonglade, as often as they help;
+    the engineering transporters once, when turned on) and, once, the Hearthstone when it saves time. A continent where the character
     knows no flight paths yet gets a reminder to open a flight master's map there.
   - Can stick to one continent (dropdown in the Route tab, per character).
   - Goes past flight masters the character doesn't know yet when they're at most a minute off the route ("Pick up the
@@ -59,7 +60,7 @@ Download: [CurseForge](https://www.curseforge.com/wow/addons/craftmans-writ-help
 - **Alts and bank:** remembers the writs and writ items in each character's bags and bank. Writ tooltips, crafted
   item tooltips, the Shopping tab and Buy Writs show copies in your bank and on alts (same realm and faction).
 - **Settings** tab: item tooltips, price source, writ price in estimates, your Diplomat rank (Legacy perk, +2%
-  reputation per rank, per character), Hearthstone use, route tracker, minimap button, and the list of remembered
+  reputation per rank, per character), Hearthstone and teleport use, route tracker, minimap button, and the list of remembered
   characters.
 - **Recipe markers:** recipes at the trainer and in your profession window that craft an item a writ asks for
   get a small icon; hover it to see which writs. The trainer's recipe tooltips list them too.
@@ -122,6 +123,7 @@ The interface version in the TOC is `16001` (WoW: Forever 1.60.1). Check it in-g
 | `CraftmansHelper/Travel.lua` | Travel-time graph (riding, flights, boats, zeppelins, tram) and shortest paths |
 | `CraftmansHelper/FlightPaths.lua` | Learns the character's known flight paths when a flight map is opened |
 | `CraftmansHelper/Hearth.lua` | Learns where the Hearthstone takes you; cooldown |
+| `CraftmansHelper/Teleports.lua` | Mage, druid and engineering teleports the route may use; where they land |
 | `CraftmansHelper/Route.lua` | Builds stops from deliverable writs, orders them by travel time, directions, follows the route |
 | `CraftmansHelper/UI/MainFrame.lua` | AceGUI window |
 | `CraftmansHelper/UI/RouteTracker.lua` | Small movable "next steps" window, with buttons to start the current stop's writs |
@@ -171,6 +173,11 @@ skycutter / tram link, the player and the stops, and runs Dijkstra between them.
 - Boats, zeppelins and skycutters: 4 minutes including the wait; the tram 2 minutes. Links are one-way
   (some boats sail a loop).
 - Hearthstone: 30 s, used at most once, only where it's off cooldown and saves at least a minute.
+- Teleports (`Teleports.lua`): 30 s each. Mage teleports (while you carry Runes of Teleportation; a route that
+  would need more casts than you have runes is planned without them) and Teleport: Moonglade can be cast from any
+  point of the route. The engineering transporters (Ultrasafe Transporter: Gadgetzan, Dimensional Ripper -
+  Everlook) are tried once per route like the Hearthstone, and only when turned on in Settings: they can misfire.
+  Where each one lands is recorded the first time you use it (only when you land in the expected zone).
 - Riding into another zone goes through a crossing: a road, pass, tunnel or gate (`Data/Crossings.lua`, collected
   in-game). Each one is a direction ("Ride into Tanaris (Thousand Needles 74.9, 93.3)") with the arrow on it. From
   Thousand Needles, Un'Goro Crater is reached through Tanaris. Capital gates are for their own faction, and the

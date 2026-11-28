@@ -17,7 +17,7 @@ local TICK_SECONDS = 1
 local RESTORE_DELAY = 5        -- seconds after login / reload before re-planning a saved route
 local HEARTH_SECONDS = 30      -- 10 s cast plus the trip / loading screen
 local PICKUP_MAX_SECONDS = 60  -- most extra riding for a flight path you don't know yet
-local PICKUP_SKIP = { [11798] = true, [11800] = true } -- Moonglade's druid-only flight masters
+local PICKUP_SKIP = { [11798] = true, [11800] = true } -- Moonglade's druid-only flight masters (not for druids)
 local HEARTH_MIN_SAVING = 60   -- only hearth when it saves at least a minute
 local HEARTH_ARRIVE_YARDS = 80 -- within this of the recorded inn = hearthed
 
@@ -63,8 +63,9 @@ local function BuildVia(steps)
     for _, step in ipairs(steps or {}) do
         local text = ns.Travel.Describe(step)
         if text then
-            -- Fallbacks and the Hearthstone have no place to walk to first.
-            local board = (step.kind ~= "travel" and step.kind ~= "hearth") and step.from or nil
+            -- Fallbacks, the Hearthstone and teleports have no place to walk to first.
+            local board = (step.kind ~= "travel" and step.kind ~= "hearth" and step.kind ~= "teleport")
+                and step.from or nil
             local into
             if step.kind == "pickup" then
                 board = step.to
@@ -88,6 +89,7 @@ local function AddPickups(lists, graph, taken)
     for i = 1, #lists do extra[i] = 0 end
     if CH.db.profile and CH.db.profile.pickups == false then return extra end
 
+    local druid = UnitClass and select(2, UnitClass("player")) == "DRUID"
     local learned = {} -- [continent] = any flight path known there
     local function Learned(contID)
         if learned[contID] == nil then learned[contID] = CH.FlightPaths:CountOn(contID) > 0 end
@@ -95,7 +97,7 @@ local function AddPickups(lists, graph, taken)
     end
     local todo = {}
     for _, node in ipairs(graph.nodes) do
-        if node.kind == "flight-unknown" and not taken[node.id] and not PICKUP_SKIP[node.id]
+        if node.kind == "flight-unknown" and not taken[node.id] and not (PICKUP_SKIP[node.id] and not druid)
             and Learned(select(3, ns.ResolveZone(node.map))) then
             table.insert(todo, node)
         end
@@ -169,7 +171,8 @@ ns._StopTitle = StopTitle -- for tests
 -- Planning
 ---------------------------------------------------------------------------
 
-function Route:Build()
+-- noMage: leave the mage teleports out (the route needed more Runes of Teleportation than you carry).
+function Route:Build(noMage)
     local faction = PlayerFactionLetter()
     local stopsByKey, unroutable, excluded, elsewhere = {}, {}, {}, {}
     -- The continent chosen for routes; nil means all of them.
@@ -199,7 +202,11 @@ function Route:Build()
     end
 
     -- Travel graph: flight paths you know, boats, zeppelins, plus you and every stop.
-    local graph = ns.Travel.NewGraph({ faction = faction, speed = ns.Travel.GroundSpeed(), knowsFlight = KnowsFlight })
+    -- Teleports you can use from anywhere (mage teleports, Teleport: Moonglade).
+    local teleports, runes
+    if CH.Teleports then teleports, runes = CH.Teleports:Anywhere(not noMage) end
+    local graph = ns.Travel.NewGraph({ faction = faction, speed = ns.Travel.GroundSpeed(), knowsFlight = KnowsFlight,
+                                       teleports = teleports })
     local start = PlayerPosition()
     if start then start = ns.Travel.AddNode(graph, start) end
 
@@ -224,44 +231,59 @@ function Route:Build()
     local seq = {}
     for k, i in ipairs(order) do seq[k] = points[i] end
 
-    -- Hearthstone: try using it once, before each stop in turn, and re-plan the rest
-    -- from the inn. Keep the quickest, if it saves at least HEARTH_MIN_SAVING.
-    local hearth = CH.Hearth and CH.Hearth:GetOption()
-    local inn, hearthAt
-    if hearth and #seq > 0 then
-        inn = ns.Travel.AddNode(graph, { kind = "inn", name = hearth.name, map = hearth.map, x = hearth.x, y = hearth.y })
-    end
-    if inn then
-        searches[inn] = ns.Travel.Search(graph, inn)
-        local best, bestSeq = total - HEARTH_MIN_SAVING, nil
-        local elapsed, prev = 0, start
-        for k = 1, #seq do
-            -- Usable from where you are (or a stop), once the cooldown is over by then.
-            if prev and hearth.readyIn <= elapsed then
-                local rest = {}
-                for j = k, #seq do rest[#rest + 1] = seq[j] end
-                local restOrder, restCost = ns.SolvePath(rest, inn, cost)
-                local candidate = elapsed + HEARTH_SECONDS + restCost
-                if candidate < best then
-                    best, hearthAt = candidate, k
-                    bestSeq = {}
-                    for j = 1, k - 1 do bestSeq[j] = seq[j] end
-                    for _, r in ipairs(restOrder) do bestSeq[#bestSeq + 1] = rest[r] end
-                end
-            end
-            elapsed = elapsed + (prev and cost(prev, seq[k]) or 0)
-            prev = seq[k]
+    -- Once per route: the Hearthstone and the engineering transporters (long cooldowns). Try
+    -- each before each stop in turn and re-plan the rest from where it lands. Keep the quickest,
+    -- if it saves at least HEARTH_MIN_SAVING.
+    local once = {}
+    if #seq > 0 then
+        local hearth = CH.Hearth and CH.Hearth:GetOption()
+        if hearth then
+            table.insert(once, { kind = "hearth", readyIn = hearth.readyIn,
+                                 node = { kind = "inn", name = hearth.name, map = hearth.map, x = hearth.x, y = hearth.y } })
         end
-        if bestSeq then seq, total = bestSeq, best end
+        for _, t in ipairs(CH.Teleports and CH.Teleports:Once() or {}) do
+            table.insert(once, { kind = "teleport", readyIn = t.readyIn,
+                                 node = { kind = "arrival", name = t.name, map = t.map, x = t.x, y = t.y, teleport = t } })
+        end
     end
+    local used, usedAt
+    local best, bestSeq = total - HEARTH_MIN_SAVING, nil
+    for _, o in ipairs(once) do
+        local node = ns.Travel.AddNode(graph, o.node)
+        if node then
+            searches[node] = ns.Travel.Search(graph, node)
+            local elapsed, prev = 0, start
+            for k = 1, #seq do
+                -- Usable from where you are (or a stop), once the cooldown is over by then.
+                if prev and o.readyIn <= elapsed then
+                    local rest = {}
+                    for j = k, #seq do rest[#rest + 1] = seq[j] end
+                    local restOrder, restCost = ns.SolvePath(rest, node, cost)
+                    local candidate = elapsed + HEARTH_SECONDS + restCost
+                    if candidate < best then
+                        best, used, usedAt = candidate, o, k
+                        bestSeq = {}
+                        for j = 1, k - 1 do bestSeq[j] = seq[j] end
+                        for _, r in ipairs(restOrder) do bestSeq[#bestSeq + 1] = rest[r] end
+                    end
+                end
+                elapsed = elapsed + (prev and cost(prev, seq[k]) or 0)
+                prev = seq[k]
+            end
+        end
+    end
+    if bestSeq then seq, total = bestSeq, best end
+    local hearthAt = used and used.kind == "hearth" and usedAt or nil
+    local teleportAt = used and used.kind == "teleport" and usedAt or nil
 
     -- Directions to each stop from the one before it (or from you), and legs per continent.
     local legs, flat, prev = {}, {}, start
     for k, stop in ipairs(seq) do
-        if k == hearthAt then
-            stop.steps = { { kind = "hearth", from = prev, to = inn, seconds = HEARTH_SECONDS } }
-            for _, step in ipairs(ns.Travel.Steps(searches[inn], stop) or {}) do table.insert(stop.steps, step) end
-            stop.seconds = HEARTH_SECONDS + cost(inn, stop)
+        if k == usedAt then
+            local node = used.node
+            stop.steps = { { kind = used.kind, from = prev, to = node, seconds = HEARTH_SECONDS } }
+            for _, step in ipairs(ns.Travel.Steps(searches[node], stop) or {}) do table.insert(stop.steps, step) end
+            stop.seconds = HEARTH_SECONDS + cost(node, stop)
         elseif prev then
             stop.steps = ns.Travel.Steps(searches[prev], stop) or {}
             stop.seconds = cost(prev, stop)
@@ -289,8 +311,20 @@ function Route:Build()
         table.insert(flat, stop)
     end
 
+    -- Each mage teleport takes a Rune of Teleportation: with too few for this route, plan without them.
+    if not noMage and runes then
+        local casts = 0
+        for _, stop in ipairs(flat) do
+            for _, step in ipairs(stop.steps or {}) do
+                if step.kind == "teleport" and step.to.teleport and step.to.teleport.rune then casts = casts + 1 end
+            end
+        end
+        if casts > runes then return self:Build(true) end
+    end
+
     return { legs = legs, stops = flat, seconds = total, unroutable = unroutable, excluded = excluded,
-             elsewhere = elsewhere, continent = only, fromPlayer = start ~= nil, graph = graph, hearthAt = hearthAt }
+             elsewhere = elsewhere, continent = only, fromPlayer = start ~= nil, graph = graph, hearthAt = hearthAt,
+             teleportAt = teleportAt }
 end
 
 ---------------------------------------------------------------------------
@@ -423,6 +457,8 @@ local function Passed(e, here)
         local d = ns.Travel.Yards(here, e.to)
         if d and d <= HEARTH_ARRIVE_YARDS then return true end
     end
+    -- A teleport: done once you're in its zone (where exactly you land isn't known until it's recorded).
+    if e.kind == "teleport" then return here.zone == e.to.zone end
     if e.kind == "cross" then return e.into ~= nil and here.zone == e.into end
     return e.from.land ~= e.to.land and here.land == e.to.land
 end

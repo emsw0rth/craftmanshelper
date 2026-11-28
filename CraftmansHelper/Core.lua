@@ -63,6 +63,9 @@ local defaults = {
         tracker = { shown = true, locked = false }, -- small "next steps" window while a route is active
         pickups = true,            -- send the route past flight masters you don't know yet, when it's on the way
         useHearth = true,          -- let the route planner use your Hearthstone once when it saves time
+        useTeleports = true,       -- ... mage city teleports (Teleports.lua), while you carry runes
+        useMoonglade = true,       -- ... the druids' Teleport: Moonglade
+        useEngineering = false,    -- ... the engineering transporters (they can misfire, so off by default)
     },
     char = {
         -- [questID] = server time of the daily reset after which the completion expires.

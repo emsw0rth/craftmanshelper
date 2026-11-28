@@ -12,6 +12,8 @@
 --   * transport: between the two ends of a boat / zeppelin / tram link
 --   * fallback: to places you can't ride to and have no known link to ("travel to ..."),
 --     so a stop is never unreachable because data is missing.
+--   * teleport: from every node to the arrival spot of each teleport you can use from anywhere
+--     (opts.teleports, Teleports.lua: mage teleports, Teleport: Moonglade).
 -- Only C_Map (for world coordinates) touches the WoW API, so this runs in tests.
 local _, ns = ...
 
@@ -28,6 +30,7 @@ Travel.FLIGHT_HOP_SECONDS = 8   -- per hop when flown lengths are known (a multi
 Travel.GROUND_DETOUR = 1.3      -- roads and terrain vs straight line, within one zone
 Travel.GROUND_DETOUR_ZONES = 1.6 -- between zones: borders are mostly mountains with a few passes
 Travel.FALLBACK_SECONDS = 900   -- reaching another landmass with no known link
+Travel.TELEPORT_SECONDS = 30    -- a teleport: 10 s cast plus the loading screen
 
 -- Maps that can't be reached on foot from the rest of their continent.
 local ISLANDS = { [1438] = "teldrassil", [1457] = "teldrassil", [2548] = "riverglades", [2521] = "zephras" }
@@ -180,10 +183,21 @@ Travel.FactionOK = FactionOK
 
 -- opts: faction = "A" | "H" | nil, speed = yards/second,
 --       knowsFlight = function(npcID, node) -> bool (nil: every flight master counts),
---       hasItem = function(itemID) -> bool for keys to gates (nil: the character's bags)
+--       hasItem = function(itemID) -> bool for keys to gates (nil: the character's bags),
+--       teleports = { { name, map, x, y, text, ... } } usable from anywhere (nil: none)
 function Travel.NewGraph(opts)
     opts = opts or {}
     local graph = { nodes = {}, speed = opts.speed or Travel.SPEED.foot }
+
+    -- Where the teleports you can use from anywhere land.
+    for _, t in ipairs(opts.teleports or {}) do
+        local node = Travel.AddNode(graph, { kind = "arrival", name = t.name, map = t.map, x = t.x, y = t.y,
+                                             teleport = t })
+        if node then
+            graph.arrivals = graph.arrivals or {}
+            table.insert(graph.arrivals, node)
+        end
+    end
 
     -- Crossings between zones: the ones open to you (your faction's capitals, keys you carry).
     if ns.Crossings then
@@ -254,6 +268,9 @@ local function Edges(graph, u, visit)
         end
     end
     for _, link in ipairs(u.links) do visit(link.to, link.seconds, link.kind) end
+    for _, a in ipairs(graph.arrivals or {}) do
+        if a ~= u then visit(a, Travel.TELEPORT_SECONDS, "teleport") end
+    end
 end
 
 -- Shortest travel times from `source` to every node: { seconds = {[index] = s}, via = {[index] = edge} }.
@@ -340,6 +357,9 @@ function Travel.Describe(step)
         return string.format("Ride into %s%s (%s)", intoName or "?", step.to.note and (", " .. step.to.note) or "", where)
     elseif step.kind == "hearth" then
         return string.format("Use your Hearthstone (%s)", step.to.name or PlaceName(step.to))
+    elseif step.kind == "teleport" then
+        local t = step.to.teleport
+        return t and t.text or ("Teleport to " .. (step.to.name or PlaceName(step.to)))
     elseif step.kind ~= "walk" then
         local what = (ns.TRANSPORT_NAMES or {})[step.kind] or step.kind
         return string.format("Take the %s from %s to %s", what, PlaceName(step.from), PlaceName(step.to))
